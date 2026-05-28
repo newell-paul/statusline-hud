@@ -54,6 +54,10 @@ chmod +x ~/.claude/statusline-hud.sh
 
 If `settings.json` already has other top-level keys, merge the `statusLine` block in alongside them.
 
+The `SEGMENTS` array in the CONFIG block controls what shows and in what order. Comment a line to hide that segment; move lines to reorder.
+
+![SEGMENTS config block](blog/images/segments.png)
+
 **4.** Restart Claude Code (or open a new session). The bar appears.
 
 ## Uninstall
