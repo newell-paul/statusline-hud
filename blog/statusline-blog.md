@@ -16,7 +16,7 @@ I kept leaving sessions on Opus long after the hard thinking was done. Claude Co
 
 **TL;DR**
 
-1. Grab `statusline-hud.sh` from **[github.com/paulnewell/statusline-hud](https://github.com/paulnewell/statusline-hud)**, drop it in `~/.claude/`, `chmod +x` it.
+1. Grab `statusline-hud.sh` from **[github.com/newell-paul/statusline-hud](https://github.com/newell-paul/statusline-hud)**, drop it in `~/.claude/`, `chmod +x` it.
 2. Add a `statusLine` block to `~/.claude/settings.json` (snippet below).
 3. Requires `jq` — `brew install jq` or `apt install jq`.
 
@@ -25,7 +25,7 @@ I kept leaving sessions on Opus long after the hard thinking was done. Claude Co
 
 ## Wire it up
 
-Repo: **[github.com/paulnewell/statusline-hud](https://github.com/paulnewell/statusline-hud)**.
+Repo: **[github.com/newell-paul/statusline-hud](https://github.com/newell-paul/statusline-hud)**.
 
 **Prerequisites**
 
@@ -105,4 +105,4 @@ The data was always there. Now you can see it.
 
 ---
 
-The repo is at **[github.com/paulnewell/statusline-hud](https://github.com/paulnewell/statusline-hud)**. Issues and PRs welcome.
+The repo is at **[github.com/newell-paul/statusline-hud](https://github.com/newell-paul/statusline-hud)**. Issues and PRs welcome.
