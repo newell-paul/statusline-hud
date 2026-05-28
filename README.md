@@ -1,5 +1,7 @@
 # statusline-hud
 
+![statusline-hud hero](blog/images/speedo.png)
+
 A power meter for Claude Code. One bash script. Renders model, effort, context window, rate limits, cache hit ratio, and cumulative session spend into a single status line.
 
 ![statusline-hud screenshot](blog/images/statusline-hud.png)
