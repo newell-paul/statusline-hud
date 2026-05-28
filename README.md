@@ -56,7 +56,18 @@ If `settings.json` already has other top-level keys, merge the `statusLine` bloc
 
 The `SEGMENTS` array in the CONFIG block controls what shows and in what order. Comment a line to hide that segment; move lines to reorder.
 
-![SEGMENTS config block](blog/images/segments.png)
+```bash
+SEGMENTS=(
+  dir         # current working directory
+  git         # branch name, ahead/behind, dirty marker
+  model       # model name + effort badge
+  ctx         # context-window usage bar
+  rl5         # 5-hour rate-limit bar with reset countdown
+  rl7         # 7-day rate-limit bar with reset countdown
+  cache       # session-wide cache-hit ratio
+  turn        # cumulative session tokens or USD (🔥)
+)
+```
 
 **4.** Restart Claude Code (or open a new session). The bar appears.
 
