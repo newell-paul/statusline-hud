@@ -25,8 +25,6 @@ I kept leaving sessions on Opus long after the hard thinking was done. Claude Co
 
 ## Wire it up
 
-Repo: **[github.com/newell-paul/statusline-hud](https://github.com/newell-paul/statusline-hud)**.
-
 **Prerequisites**
 
 - `jq` on your `PATH`. The script hard-exits with `⚠ jq missing` without it.
@@ -47,23 +45,23 @@ Repo: **[github.com/newell-paul/statusline-hud](https://github.com/newell-paul/s
 }
 ```
 
-`refreshInterval` is optional — leave it out and the bar redraws on Claude Code events (prompts, responses, tool calls). Add `"refreshInterval": 5` if you want it to also tick on a timer, for example to keep the countdown accurate while background subagents are running.
+`refreshInterval` is optional — leave it out and the bar redraws on Claude Code events (each new assistant message, after `/compact`, and on permission-mode or vim-mode changes). Add `"refreshInterval": 5` if you want it to also tick on a timer, for example to keep the countdown accurate while background subagents are running.
 
-The repo has 86 bats tests and a hardened `git_safe()` wrapper that disables `core.fsmonitor` / `core.hooksPath`, so a hostile `.git/config` can't execute code via the bar.
+The repo has 80 bats tests and a hardened `git_safe()` wrapper that disables `core.fsmonitor` / `core.hooksPath`, so a hostile `.git/config` can't execute code via the bar.
 
 Settings reload; the bar appears on your next interaction.
 
 ## The JSON hiding in the statusline
 
-Claude Code's statusline is a shell command that reads a JSON blob on stdin and prints one line of text. Cost, effort, fast mode, cache stats, both rate-limit windows — all already in there, emitted on every render (debounced 300ms). You just need something to show it. (Tap the pipe with `tee` to see the full payload; PAYG and API users will find `rate_limits` absent.)
+Claude Code's statusline is a shell command that reads a JSON blob on stdin and prints one line of text. Cost, effort, fast mode, cache stats, both rate-limit windows — all already in there, emitted on every render (debounced 300ms). You just need something to show it. (Tap the pipe with `tee` to see the full payload; PAYG (pay-as-you-go) and API users will find `rate_limits` absent.)
 
 ## What the bar shows
 
 With everything switched on:
 
 - Directory + git status (`↑N↓N`, `✗` if dirty)
-- Model name with effort badge (`⚡Lo`…`⚡Max`) and fast-mode rocket 🚀 when `/fast` is active
-- Context-window bar: 5 cells using eighths (`▏▎▍▌▋▊▉█`) so the bar moves smoothly within a tier, with the tier colour stepping green → yellow → orange → red
+- Model name with effort badge (`⚡Lo` / `⚡Med` / `⚡Hi` / `⚡xHi` / `⚡Max`) and fast-mode rocket 🚀 when `/fast` is active
+- Context-window bar: 5 cells using eighths (`▏▎▍▌▋▊▉█`) so the bar moves smoothly within a tier, with the tier colour stepping green → yellow → orange → red (see the README for the exact ctx and rate-limit breakpoints — they differ)
 - 5-hour and 7-day rate-limit bars (both shown by default; comment either out in `SEGMENTS`), with reset countdown (`↺2h14m`) appended only at ≥60%
 - Cache hit ratio (`↩97%`), only after >5k input tokens
 - `🔥` cumulative session spend in USD (or input tokens — see toggle below)
@@ -76,7 +74,7 @@ Everything is configurable from the `CONFIG` block at the top of the script.
 
 Other knobs you'll probably touch:
 
-- `TURN_UNIT`: `usd` (default) shows the flame in dollars; flip to `tokens` for input-token count instead.
+- `TURN_UNIT`: `usd` (default) shows the flame in dollars; flip to `tokens` for input-token count instead. In `tokens` mode the value is the *live context window* (see the flame section below), so its thresholds are fractions of a 200k context, not session totals.
 - `TIER_COLOR`, `BAR_CTX`, `BAR_LINEAR`: bar palette and the tier thresholds at which each bar flips colour.
 - `TURN_HI_USD` / `TURN_MED_USD`: USD thresholds for the flame's amber/red (`TURN_HI_TOK` / `TURN_MED_TOK` for tokens mode).
 
@@ -92,7 +90,7 @@ Green means I haven't checked the bar in a while and don't need to. Amber means 
 
 Opus for architecture, complex debugging, ugly refactors. Sonnet for most everyday work. Haiku for routine commands.
 
-On Pro and Max, `cost.total_cost_usd` is an estimate, not your bill — API list rates applied client-side, which can differ from what you're actually billed. Still the best signal for what the flame answers: how much have I put through the model so far? If you'd rather see input tokens, flip `TURN_UNIT=tokens` in the CONFIG block — just be aware that on current Claude Code (post-v2.1.132) `total_input_tokens` reflects *current* context window, not cumulative session totals, and can drop after a `/compact`.
+On Pro and Max, `cost.total_cost_usd` is an estimate, not your bill — API list rates applied client-side, which can differ from what you're actually billed. Still the best signal for what the flame answers: how much have I put through the model so far? If you'd rather see input tokens, flip `TURN_UNIT=tokens` in the CONFIG block — just be aware that as of v2.1.132 `total_input_tokens` reflects *current* context window, not cumulative session totals, and can drop after a `/compact`. The default token thresholds (`TURN_MED_TOK` / `TURN_HI_TOK`) are tuned to that — fractions of a 200k context, so red means "context is filling up," not "expensive session."
 
 For historical totals, `/usage` gives you the deeper view. The bar nudges in the moment; `/usage` is the rear-view mirror.
 

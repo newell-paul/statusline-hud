@@ -50,18 +50,18 @@ load helpers
   [[ "$output" == *"🔥 1.2M"* ]]
 }
 
-@test "tokens unit: green below TURN_MED_TOK (250k)" {
+@test "tokens unit: green below TURN_MED_TOK (120k)" {
   TURN_UNIT=tokens run_hud "$(make_json total_input=100000)"
   [[ "$output" == *$'\033[92m🔥'* ]]
 }
 
 @test "tokens unit: yellow at TURN_MED_TOK..TURN_HI_TOK" {
-  TURN_UNIT=tokens run_hud "$(make_json total_input=500000)"
+  TURN_UNIT=tokens run_hud "$(make_json total_input=140000)"
   [[ "$output" == *$'\033[33m🔥'* ]]
 }
 
-@test "tokens unit: red at or above TURN_HI_TOK (750k)" {
-  TURN_UNIT=tokens run_hud "$(make_json total_input=800000)"
+@test "tokens unit: red at or above TURN_HI_TOK (160k)" {
+  TURN_UNIT=tokens run_hud "$(make_json total_input=180000)"
   [[ "$output" == *$'\033[31m🔥'* ]]
 }
 

@@ -72,10 +72,12 @@ case "$TURN_UNIT" in usd|tokens) ;; *) TURN_UNIT=usd ;; esac
 # PAYG users may want to dial these down (e.g. 0.50 / 2.00).
 TURN_HI_USD=20.00
 TURN_MED_USD=5.00
-# Thresholds for TURN_UNIT=tokens (raw input tokens), tuned for cumulative
-# session totals — red ≈ "genuinely expensive Opus session, consider /clear".
-TURN_HI_TOK=750000
-TURN_MED_TOK=250000
+# Thresholds for TURN_UNIT=tokens (raw input tokens). As of Claude Code
+# v2.1.132 total_input_tokens is the LIVE context window, not a cumulative
+# session total, so these are tuned as fractions of a 200k context: red ≈
+# "context filling up, consider /compact or /clear". Raise for a 1M model.
+TURN_HI_TOK=160000
+TURN_MED_TOK=120000
 # Colours are 16-colour SGR codes (NOT 256-colour indices) because awk emits
 # them into a `\033[%dm` format. Shared by both units.
 C_TURN_HI=31            # red    >= high threshold
