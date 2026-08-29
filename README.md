@@ -55,6 +55,8 @@ chmod +x ~/.claude/statusline-hud.sh
 
 If `settings.json` already has other top-level keys, merge the `statusLine` block in alongside them.
 
+Optional: add `"refreshInterval": 30` inside the `statusLine` block to also re-render on a timer. Claude Code otherwise only re-runs the script on events (new assistant message, `/compact`, a rate-limit reset), so the git and MR/PR segments can go stale while the session idles — e.g. a subagent switching branches, or an MR getting merged while you wait. The rate-limit bars themselves only refresh with an API response; the timer keeps everything else current.
+
 The `SEGMENTS` array in the CONFIG block controls what shows and in what order. Comment a line to hide that segment; move lines to reorder.
 
 ```bash
