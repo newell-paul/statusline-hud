@@ -14,6 +14,8 @@ SCRIPT="${BATS_TEST_DIRNAME}/../statusline-hud.sh"
 # Usage: run_hud '<json>'
 # Optional local the caller can set before invoking:
 #   TURN_UNIT    = usd | tokens
+# The turn segment is re-enabled in the patched copy regardless of whether it
+# is commented out in SEGMENTS, so turn.bats always exercises it.
 #   MR_CACHE_DIR = directory for the mr segment's glab cache (isolates tests)
 #   MR_TTL       = seconds before a cached MR lookup is considered stale
 #   C_MR_LINK    = link colour for the MR ref ("" = inherit state colour)
@@ -28,6 +30,7 @@ run_hud() {
       -e "s|^MR_TTL=.*|MR_TTL=${MR_TTL:-60}|" \
       -e "s|^C_MR_LINK=.*|C_MR_LINK=${C_MR_LINK-39}|" \
       -e "s|^MR_LINK_STYLE=.*|MR_LINK_STYLE=${MR_LINK_STYLE-4}|" \
+      -e "s|^  # turn  |  turn  |" \
       -e "s|^MR_PREFIX_GITLAB=.*|MR_PREFIX_GITLAB=\"${MR_PREFIX_GITLAB-!}\"|" \
       -e "s|^MR_PREFIX_GITHUB=.*|MR_PREFIX_GITHUB=\"${MR_PREFIX_GITHUB-🐙 #}\"|" \
     "$SCRIPT" > "$patched"
