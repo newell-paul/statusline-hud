@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
 load helpers
 
-# The mr segment shows the GitLab merge request for the current branch via
-# `glab mr view`. glab takes ~1s, and the statusline renders on every
+# The mr segment shows the GitLab merge request (via `glab mr view`) or the
+# GitHub pull request (via `gh pr view`) for the current branch, picking the
+# CLI from the `origin` remote host. glab takes ~1s, and the statusline renders on every
 # keystroke, so the lookup runs in the background and is cached per
 # repo+branch for MR_TTL seconds. A render never blocks on glab:
 #   - no cache  → spawn refresh, print nothing
@@ -12,7 +13,7 @@ load helpers
 
 setup() {
   REPO=$(make_clean_repo)
-  ( cd "$REPO" && git checkout -q -b feature )
+  ( cd "$REPO" && git checkout -q -b feature && git remote add origin git@gitlab.com:acme/widgets.git )
   MR_CACHE_DIR=$(mktemp -d)
   FAKE_BIN=$(mktemp -d)
   export PATH="$FAKE_BIN:$PATH"
@@ -235,10 +236,117 @@ mr_json_url() {
   [[ "$output" == *$'\033[4m\033[38;5;46m!23\033[0m'* ]]
 }
 
-@test "MR_PREFIX replaces the ! before the ref" {
-  MR_PREFIX="MR "
+@test "MR_PREFIX_GITLAB replaces the ! before the ref" {
+  MR_PREFIX_GITLAB="MR "
   fake_glab "$(mr_json_url)"
   render_after_refresh
   [[ "$output" == *"MR 23"* ]]
   [[ "$output" != *"!23"* ]]
+}
+
+# --- GitHub (gh) -------------------------------------------------------------
+# origin on github.com switches the lookup to `gh pr view` and the badge to
+# GitHub's #N notation. gh's states are normalised into the same cache line.
+
+use_github() {
+  ( cd "$REPO" && git remote set-url origin git@github.com:acme/widgets.git )
+}
+
+# fake_gh <json | empty>
+fake_gh() {
+  if [ -z "$1" ]; then
+    printf '#!/usr/bin/env bash\nexit 1\n' > "$FAKE_BIN/gh"
+  else
+    printf '#!/usr/bin/env bash\ncat <<'"'"'J'"'"'\n%s\nJ\n' "$1" > "$FAKE_BIN/gh"
+  fi
+  chmod +x "$FAKE_BIN/gh"
+}
+
+pr_json() {
+  # $1 state, $2 isDraft, $3 mergeable, $4 mergeStateStatus
+  printf '{"number":42,"state":"%s","isDraft":%s,"mergeable":"%s","mergeStateStatus":"%s","url":"https://github.com/acme/widgets/pull/42"}' "$1" "$2" "$3" "$4"
+}
+
+@test "github origin: clean open PR renders 🐙 #N ✓ linked to the PR" {
+  use_github; fake_gh "$(pr_json OPEN false MERGEABLE CLEAN)"
+  render_after_refresh
+  [[ "$output" == *"🐙 #42"* ]]
+  [[ "$output" == *$'#42\033[0m \033[38;5;46m✓'* ]]
+  [[ "$output" == *$'\033]8;;https://github.com/acme/widgets/pull/42\a'* ]]
+}
+
+@test "github origin: conflicting PR renders ✗" {
+  use_github; fake_gh "$(pr_json OPEN false CONFLICTING DIRTY)"
+  render_after_refresh
+  [[ "$output" == *"#42"* ]]
+  [[ "$output" == *$'\033[38;5;196m✗'* ]]
+}
+
+@test "github origin: draft PR renders ✎" {
+  use_github; fake_gh "$(pr_json OPEN true MERGEABLE DRAFT)"
+  render_after_refresh
+  [[ "$output" == *"✎"* ]]
+  assert_color "$output" 245 "draft grey"
+}
+
+@test "github origin: merged PR renders ⇄" {
+  use_github; fake_gh "$(pr_json MERGED false UNKNOWN UNKNOWN)"
+  render_after_refresh
+  [[ "$output" == *"⇄"* ]]
+  assert_color "$output" 99 "merged purple"
+}
+
+@test "github origin: closed PR renders dim" {
+  use_github; fake_gh "$(pr_json CLOSED false UNKNOWN UNKNOWN)"
+  render_after_refresh
+  [[ "$output" == *"#42"* ]]
+  assert_color "$output" 240 "closed dim"
+}
+
+@test "github origin: blocked / behind / unknown states render pending yellow" {
+  C_MR_LINK=""
+  use_github; fake_gh "$(pr_json OPEN false MERGEABLE BLOCKED)"
+  render_after_refresh
+  [[ "$output" == *"#42"* ]]
+  [[ "$output" != *"✓"* ]]
+  [[ "$output" != *"✗"* ]]
+  assert_color "$output" 226 "pending yellow"
+}
+
+@test "github origin: glab is never called" {
+  use_github; fake_gh "$(pr_json OPEN false MERGEABLE CLEAN)"
+  printf '#!/usr/bin/env bash\ntouch "%s/glab-called"\nexit 1\n' "$FAKE_BIN" > "$FAKE_BIN/glab"; chmod +x "$FAKE_BIN/glab"
+  render_after_refresh
+  [ ! -e "$FAKE_BIN/glab-called" ]
+}
+
+@test "github origin without gh on PATH: segment silently absent" {
+  use_github
+  PATH="$FAKE_BIN:/usr/bin:/bin"
+  run_hud "$(make_json cwd="$REPO")"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"#"* ]]
+}
+
+@test "no origin remote: segment absent, no cache written" {
+  ( cd "$REPO" && git remote remove origin )
+  fake_glab "$(mr_json opened false mergeable false)"
+  run_hud "$(make_json cwd="$REPO")"
+  [[ "$output" != *"!23"* ]]
+  [ -z "$(ls -A "$MR_CACHE_DIR")" ]
+}
+
+@test "self-hosted gitlab origin uses glab" {
+  ( cd "$REPO" && git remote set-url origin https://gitlab.acme.internal/team/widgets.git )
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" == *"!23 ✓"* ]]
+}
+
+@test "github https origin is detected" {
+  ( cd "$REPO" && git remote set-url origin https://github.com/acme/widgets.git )
+  fake_gh "$(pr_json OPEN false MERGEABLE CLEAN)"
+  render_after_refresh
+  [[ "$output" == *"#42"* ]]
+  [[ "$output" == *$'\033[38;5;46m✓'* ]]
 }

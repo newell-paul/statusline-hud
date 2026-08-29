@@ -18,7 +18,8 @@ SCRIPT="${BATS_TEST_DIRNAME}/../statusline-hud.sh"
 #   MR_TTL       = seconds before a cached MR lookup is considered stale
 #   C_MR_LINK    = link colour for the MR ref ("" = inherit state colour)
 #   MR_LINK_STYLE = SGR for a linked ref (tests default to 4, underline)
-#   MR_PREFIX    = text before the MR number (tests default to "!")
+#   MR_PREFIX_GITLAB = text before a GitLab MR number (tests default to "!")
+#   MR_PREFIX_GITHUB = text before a GitHub PR number (tests default to "🐙 #")
 run_hud() {
   local patched
   patched=$(mktemp)
@@ -27,7 +28,8 @@ run_hud() {
       -e "s|^MR_TTL=.*|MR_TTL=${MR_TTL:-60}|" \
       -e "s|^C_MR_LINK=.*|C_MR_LINK=${C_MR_LINK-39}|" \
       -e "s|^MR_LINK_STYLE=.*|MR_LINK_STYLE=${MR_LINK_STYLE-4}|" \
-      -e "s|^MR_PREFIX=.*|MR_PREFIX=\"${MR_PREFIX-!}\"|" \
+      -e "s|^MR_PREFIX_GITLAB=.*|MR_PREFIX_GITLAB=\"${MR_PREFIX_GITLAB-!}\"|" \
+      -e "s|^MR_PREFIX_GITHUB=.*|MR_PREFIX_GITHUB=\"${MR_PREFIX_GITHUB-🐙 #}\"|" \
     "$SCRIPT" > "$patched"
   run bash "$patched" <<<"$1"
   rm -f "$patched"

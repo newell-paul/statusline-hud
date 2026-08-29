@@ -6,7 +6,7 @@
 # statusline-hud.sh — Claude Code statusline.
 # Reads one JSON payload from stdin, prints one ANSI-coloured status line.
 # Sections include: cwd, git, model + effort/fast badges, ctx/5h/7d power
-# bars, prompt-cache hit ratio, GitLab MR badge, and a 🔥 cumulative session
+# bars, prompt-cache hit ratio, GitLab MR / GitHub PR badge, and a 🔥 cumulative session
 # spend (or input-token) gauge. Reorder or disable sections by editing SEGMENTS in the CONFIG
 # block below.
 set -u
@@ -97,10 +97,12 @@ C_CACHE_COLD=36         # ❄ when prompt_cache.warm=false (cyan, informational)
 CACHE_MIN_TOKENS=5000       # below this, cache hit% is statistically meaningless
 RESET_COUNTDOWN_PCT=60      # show "resets in ↺Xh Ym" once a limit crosses this
 
-# GitLab MR badge (mr segment). `glab mr view` takes ~1s and the statusline
-# renders on every keystroke, so lookups run in the background and are cached
-# per repo+branch. A render never waits on glab: stale entries are shown as-is
-# while a refresh runs. Needs `glab` on PATH; silently absent otherwise.
+# MR/PR badge (mr segment). The `origin` remote picks the CLI: github.com →
+# `gh pr view`, anything else → `glab mr view` (gitlab.com or self-hosted).
+# Both take ~1s and the statusline renders on every keystroke, so lookups run
+# in the background and are cached per repo+branch. A render never waits on
+# the CLI: stale entries are shown as-is while a refresh runs. Silently
+# absent when the matching CLI isn't on PATH or there's no origin.
 MR_TTL=60                        # seconds before a cached lookup is refreshed
 MR_CACHE_DIR=/tmp/statusline-hud-$UID
 C_MR_OK=46              # opened + mergeable → green  "!23 ✓"
@@ -109,7 +111,8 @@ C_MR_PENDING=226        # pipeline / mergeability still checking → yellow "!23
 C_MR_DRAFT=245          # draft → grey "✎ !23"
 C_MR_MERGED=99          # merged → purple "⇄ !23"
 C_MR_CLOSED=240         # closed → dim "!23"
-MR_PREFIX="🦊 !"         # text before the MR number; try "!" (GitLab notation), "MR ", "↗ ", or Nerd Font " " if your terminal renders it
+MR_PREFIX_GITLAB="🦊 !"  # before a GitLab MR number; try "!", "MR ", or Nerd Font " " if it renders
+MR_PREFIX_GITHUB="🐙 #"  # before a GitHub PR number; try "#", "PR "
 C_MR_LINK=39            # "!23" text when the badge is a clickable link;
                         # "" = keep the state colour (underline only)
 MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 none
@@ -126,7 +129,7 @@ SEGMENTS=(
   cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
   # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   turn        # cumulative session tokens or USD (🔥)
-  mr          # GitLab MR badge for the current branch (needs glab)
+  mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
 )
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -368,9 +371,11 @@ fi
 
 # ─── GitLab MR badge ────────────────────────────────────────────────────────
 # Cache file per repo+branch holds one TSV line: iid state draft status
-# conflicts web_url. An empty file is a cached "no MR". The badge is wrapped
-# in an OSC 8 hyperlink to web_url, so terminals that support it (Ghostty,
-# iTerm2, Kitty, WezTerm) make it Cmd/Ctrl-clickable; others show plain text. mr_refresh() runs glab in a
+# conflicts web_url. An empty file is a cached "no MR/PR". GitHub's states
+# are normalised into the same vocabulary as GitLab's so one renderer serves
+# both. The badge is wrapped in an OSC 8 hyperlink to web_url, so terminals
+# that support it (Ghostty, iTerm2, Kitty, WezTerm) make it Cmd/Ctrl-
+# clickable; others show plain text. mr_refresh() runs glab in a
 # detached background job with all fds closed so the render (and anything
 # capturing its stdout) never waits on it; a lock dir stops concurrent
 # renders from stacking up glab calls.
@@ -383,15 +388,41 @@ mr_refresh() {
   }
   (
     cd "$cwd" 2>/dev/null || exit
-    glab mr view --output json 2>/dev/null \
-      | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring), (.web_url // "-")] | @tsv' \
-      > "$f.tmp" 2>/dev/null
+    if [ "$mr_host" = github ]; then
+      gh pr view --json number,state,isDraft,mergeable,mergeStateStatus,url 2>/dev/null \
+        | jq -r '[
+            .number,
+            ({OPEN:"opened", MERGED:"merged", CLOSED:"closed"}[.state] // "opened"),
+            (.isDraft|tostring),
+            ({CLEAN:"mergeable", HAS_HOOKS:"mergeable", UNSTABLE:"mergeable",
+              DIRTY:"conflict", BEHIND:"checking", BLOCKED:"checking",
+              UNKNOWN:"checking", DRAFT:"checking"}[.mergeStateStatus] // "checking"),
+            ((.mergeable == "CONFLICTING")|tostring),
+            (.url // "-")
+          ] | @tsv' \
+        > "$f.tmp" 2>/dev/null
+    else
+      glab mr view --output json 2>/dev/null \
+        | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring), (.web_url // "-")] | @tsv' \
+        > "$f.tmp" 2>/dev/null
+    fi
     mv -f "$f.tmp" "$f" 2>/dev/null
     rmdir "$lock" 2>/dev/null
   ) </dev/null >/dev/null 2>&1 &
   disown 2>/dev/null
 }
-if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
+mr_host=""
+if [ -n "$branch" ]; then
+  origin=$(git_safe remote get-url origin 2>/dev/null)
+  case "$origin" in
+    "")                                 ;;
+    *github.com[:/]*)                   command -v gh   >/dev/null 2>&1 && mr_host=github ;;
+    *)                                  command -v glab >/dev/null 2>&1 && mr_host=gitlab ;;
+  esac
+fi
+if [ -n "$mr_host" ]; then
+  mr_prefix=$MR_PREFIX_GITLAB
+  [ "$mr_host" = github ] && mr_prefix=$MR_PREFIX_GITHUB
   top=$(git_safe rev-parse --show-toplevel 2>/dev/null)
   key=$(printf '%s|%s' "$top" "$branch" | cksum | cut -d' ' -f1)
   mkdir -p "$MR_CACHE_DIR" 2>/dev/null
@@ -425,11 +456,11 @@ if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
       if [ -n "$mr_url" ]; then
         mr_str=""
         [ -n "$mr_pre" ]  && mr_str+=$(printf "\033[38;5;%dm%s%s " "$mr_col" "$mr_pre" "$C_OFF")
-        mr_str+=$(printf "\033[%dm\033[38;5;%dm%s%s" "$MR_LINK_STYLE" "${C_MR_LINK:-$mr_col}" "$MR_PREFIX$mr_iid" "$C_OFF")
+        mr_str+=$(printf "\033[%dm\033[38;5;%dm%s%s" "$MR_LINK_STYLE" "${C_MR_LINK:-$mr_col}" "$mr_prefix$mr_iid" "$C_OFF")
         [ -n "$mr_post" ] && mr_str+=$(printf " \033[38;5;%dm%s%s" "$mr_col" "$mr_post" "$C_OFF")
         mr_str=$'\033]8;;'"$mr_url"$'\a'"$mr_str"$'\033]8;;\a'
       else
-        mr_str=$(printf "\033[38;5;%dm%s%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$MR_PREFIX$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
+        mr_str=$(printf "\033[38;5;%dm%s%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$mr_prefix$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
       fi
     fi
     stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
