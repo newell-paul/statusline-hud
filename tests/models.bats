@@ -33,7 +33,7 @@ load helpers
 }
 
 @test "missing model field falls back to ?" {
-  run_hud '{"cwd":"/Users/paulnewell/statusline-hud","context_window":{"used_percentage":10},"cost":{"total_cost_usd":0,"total_duration_ms":0},"rate_limits":{"five_hour":{"used_percentage":0}}}'
+  run_hud '{"cwd":"/Users/alice/proj","context_window":{"used_percentage":10},"cost":{"total_cost_usd":0,"total_duration_ms":0},"rate_limits":{"five_hour":{"used_percentage":0}}}'
   [[ "$output" == *"?"* ]]
 }
 

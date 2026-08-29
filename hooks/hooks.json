@@ -1,0 +1,17 @@
+{
+  "description": "Re-point ~/.claude/statusline-hud.sh at the plugin after updates; nudge once if not yet set up",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

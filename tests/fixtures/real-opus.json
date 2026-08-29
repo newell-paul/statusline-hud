@@ -1,57 +1,77 @@
 {
-  "session_id": "d23c9111-1192-4a46-8a85-1e830ee496c9",
-  "transcript_path": "/Users/paulnewell/.claude/projects/-Users-paulnewell-statusline-hud/d23c9111-1192-4a46-8a85-1e830ee496c9.jsonl",
-  "cwd": "/Users/paulnewell/statusline-hud",
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "transcript_path": "/Users/alice/.claude/projects/-Users-alice-proj/00000000-0000-4000-8000-000000000000.jsonl",
+  "cwd": "/Users/alice/proj",
+  "prompt_id": "00000000-0000-4000-8000-000000000001",
   "effort": {
-    "level": "medium"
+    "level": "high"
   },
-  "session_name": "Fix jq statusline function error",
+  "session_name": "Example session",
   "model": {
-    "id": "claude-opus-4-7[1m]",
-    "display_name": "Opus 4.7 (1M context)"
+    "id": "claude-opus-5",
+    "display_name": "Opus 5"
   },
   "workspace": {
-    "current_dir": "/Users/paulnewell/statusline-hud",
-    "project_dir": "/Users/paulnewell/statusline-hud",
-    "added_dirs": []
+    "current_dir": "/Users/alice/proj",
+    "project_dir": "/Users/alice/proj",
+    "added_dirs": [],
+    "repo": {
+      "host": "github.com",
+      "owner": "acme",
+      "name": "widgets"
+    }
   },
-  "version": "2.1.143",
+  "version": "2.1.251",
   "output_style": {
     "name": "default"
   },
   "cost": {
-    "total_cost_usd": 0.22963825,
-    "total_duration_ms": 384281,
-    "total_api_duration_ms": 37573,
+    "total_cost_usd": 0.42331700000000005,
+    "total_duration_ms": 30572,
+    "total_api_duration_ms": 3236,
     "total_lines_added": 0,
     "total_lines_removed": 0
   },
   "context_window": {
-    "total_input_tokens": 30352,
-    "total_output_tokens": 12,
+    "total_input_tokens": 42134,
+    "total_output_tokens": 4,
     "context_window_size": 1000000,
     "current_usage": {
-      "input_tokens": 6,
-      "output_tokens": 12,
-      "cache_creation_input_tokens": 603,
-      "cache_read_input_tokens": 29743
+      "input_tokens": 2,
+      "output_tokens": 4,
+      "cache_creation_input_tokens": 42132,
+      "cache_read_input_tokens": 0
     },
-    "used_percentage": 3,
-    "remaining_percentage": 97
+    "used_percentage": 4,
+    "remaining_percentage": 96
   },
   "exceeds_200k_tokens": false,
+  "prompt_cache": {
+    "warm": true,
+    "caching_observed": true,
+    "ttl": "1h",
+    "expires_at": 1788009658,
+    "requests": 1,
+    "misses": 0,
+    "expected_rebuilds": 0,
+    "hit_ratio": 0,
+    "cache_write_tokens": 42132,
+    "miss_recache_tokens": 0,
+    "last_miss_at": null,
+    "recache_tokens_if_cold": 42134
+  },
   "fast_mode": false,
   "thinking": {
     "enabled": false
   },
   "rate_limits": {
     "five_hour": {
-      "used_percentage": 5,
-      "resets_at": 1779120600
+      "used_percentage": 76,
+      "resets_at": 1788006600
     },
     "seven_day": {
-      "used_percentage": 8,
-      "resets_at": 1779138000
+      "used_percentage": 9,
+      "resets_at": 1788210000
     }
   }
 }

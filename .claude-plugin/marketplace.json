@@ -1,0 +1,15 @@
+{
+  "name": "statusline-hud",
+  "description": "Statusline HUD for Claude Code",
+  "owner": {
+    "name": "Paul Newell",
+    "url": "https://github.com/newell-paul"
+  },
+  "plugins": [
+    {
+      "name": "statusline-hud",
+      "source": "./",
+      "description": "A power meter for Claude Code: context, 5h/7d rate-limit bars, model + effort, git, MR/PR badge and pipeline dot in one status line."
+    }
+  ]
+}
