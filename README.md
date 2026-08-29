@@ -64,15 +64,16 @@ The `SEGMENTS` array in the CONFIG block controls what shows and in what order. 
 SEGMENTS=(
   dir         # current working directory
   git         # branch name, ahead/behind, dirty marker
+  mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
+  ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model name + effort badge
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   rl7         # 7-day rate-limit bar with reset countdown
   cache       # session-wide cache-hit ratio (❄ when cold)
   turn        # the flame 🔥 — cumulative session tokens or USD
-  mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
-  ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
 )
+  turn        # the flame 🔥 — cumulative session tokens or USD
 ```
 
 **4.** Restart Claude Code (or open a new session). The bar appears.

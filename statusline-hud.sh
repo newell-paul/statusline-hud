@@ -126,6 +126,8 @@ MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 no
 SEGMENTS=(
   # dir         # current working directory
   git         # branch name, ahead/behind, dirty marker
+  mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
+  ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model display name, effort badge, fast-mode rocket
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
@@ -133,9 +135,9 @@ SEGMENTS=(
   # cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
   # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   # turn        # cumulative session tokens or USD (🔥)
-  mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
-  ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
 )
+  # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
+  # turn        # cumulative session tokens or USD (🔥)
 # ────────────────────────────────────────────────────────────────────────────
 
 # ─── Pre-baked ANSI escapes (assignment-time expansion via $'\033') ─────────
