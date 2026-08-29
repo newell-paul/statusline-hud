@@ -350,3 +350,30 @@ pr_json() {
   [[ "$output" == *"#42"* ]]
   [[ "$output" == *$'\033[38;5;46m✓'* ]]
 }
+
+# --- Remote discovery ---------------------------------------------------------
+# Not every repo calls its remote `origin`. Fall back to the branch's upstream
+# remote, then the first remote listed.
+
+@test "remote named gitlab (no origin) with upstream set uses glab" {
+  ( cd "$REPO" && git remote rename origin gitlab && git remote add other git@github.com:x/y.git \
+    && git config branch.feature.remote gitlab && git config branch.feature.merge refs/heads/feature )
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" == *"!23 ✓"* ]]
+}
+
+@test "no origin and no upstream: first remote wins" {
+  ( cd "$REPO" && git remote rename origin gitlab )
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" == *"!23 ✓"* ]]
+}
+
+@test "origin beats a github upstream remote" {
+  ( cd "$REPO" && git remote add fork git@github.com:x/y.git \
+    && git config branch.feature.remote fork && git config branch.feature.merge refs/heads/feature )
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" == *"!23 ✓"* ]]
+}

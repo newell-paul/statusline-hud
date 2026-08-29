@@ -413,7 +413,16 @@ mr_refresh() {
 }
 mr_host=""
 if [ -n "$branch" ]; then
-  origin=$(git_safe remote get-url origin 2>/dev/null)
+  # Remote to classify: origin, else the branch's upstream remote, else the
+  # first remote listed. Repos that name their only remote `gitlab` or
+  # `github` are common enough to matter.
+  remote=origin
+  git_safe remote get-url origin >/dev/null 2>&1 || {
+    remote=$(git_safe config "branch.$branch.remote" 2>/dev/null)
+    [ -z "$remote" ] && remote=$(git_safe remote 2>/dev/null | head -1)
+  }
+  origin=""
+  [ -n "$remote" ] && origin=$(git_safe remote get-url "$remote" 2>/dev/null)
   case "$origin" in
     "")                                 ;;
     *github.com[:/]*)                   command -v gh   >/dev/null 2>&1 && mr_host=github ;;
