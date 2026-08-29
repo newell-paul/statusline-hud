@@ -115,7 +115,7 @@ brew install bats-core
 bats tests/
 ```
 
-141 tests cover bars, effort levels, git states, reset countdowns, cache ratios, the cold-cache ❄ flip, the MR/PR badge and pipeline dot (fake `glab`/`gh` on PATH, remote-host detection, GitHub state normalisation, HEAD-sha mismatch, cache freshness, per-branch keys), the session-cumulative cost/token segment, malformed input, and a recorded JSON contract. The contract test fails if Anthropic adds, renames, removes, or changes the type of any field in the recorded fixture (`tests/fixtures/real-opus.json`).
+143 tests cover bars, effort levels, git states, reset countdowns, cache ratios, the cold-cache ❄ flip, the MR/PR badge and pipeline dot (fake `glab`/`gh` on PATH, remote-host detection, GitHub state normalisation, HEAD-sha mismatch, cache freshness, per-branch keys), the session-cumulative cost/token segment, malformed input, and a recorded JSON contract. The contract test fails if Anthropic adds, renames, removes, or changes the type of any field in the recorded fixture (`tests/fixtures/real-opus.json`).
 
 To refresh the contract after an intentional schema change: `./tests/regen-schema.sh`.
 

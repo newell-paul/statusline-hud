@@ -377,3 +377,24 @@ pr_json() {
   render_after_refresh
   [[ "$output" == *"!23 ✓"* ]]
 }
+
+# --- Regressions from the single-rev-parse refactor ---------------------------
+
+@test "long branch name (>20 chars, truncated for display) still resolves the badge" {
+  ( cd "$REPO" && git checkout -q -b a-very-long-branch-name-that-exceeds-twenty \
+    && git remote rename origin gitlab \
+    && git config branch.a-very-long-branch-name-that-exceeds-twenty.remote gitlab )
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" == *"…"* ]]
+  [[ "$output" == *"!23 ✓"* ]]
+}
+
+@test "unborn repo (no commits) renders without error and without a badge" {
+  local d; d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin git@gitlab.com:a/b.git )
+  fake_glab "$(mr_json opened false mergeable false)"
+  run_hud "$(make_json cwd="$d")"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"!23"* ]]
+  rm -rf "$d"
+}

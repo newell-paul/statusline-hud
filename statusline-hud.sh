@@ -238,11 +238,23 @@ esac
 # many subcommands. The statusline fires on every render, so a malicious repo
 # could otherwise run code on every keystroke.
 git_safe() { git -C "$cwd" -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
-branch="" dirty="" ab=""
-if [ -n "$cwd" ] && git_safe rev-parse --git-dir >/dev/null 2>&1; then
-  branch=$(git_safe branch --show-current 2>/dev/null)
-  [ -z "$branch" ] && branch=$(git_safe rev-parse --short HEAD 2>/dev/null)
-  branch="${branch//$SCRUB_PAT/}"
+branch="" dirty="" ab="" git_top="" head_sha="" branch_full=""
+# One rev-parse answers four questions (in a repo? toplevel? HEAD? branch?).
+# rev-parse options are sticky for the args that follow, so the bare HEAD
+# must come before --abbrev-ref. It prints what it can before failing on an
+# unborn HEAD, so test the first line rather than the exit status. Later
+# blocks (MR badge, pipeline dot) reuse git_top / head_sha / branch_full
+# instead of calling git again.
+git_dir=""
+if [ -n "$cwd" ]; then
+  { IFS= read -r git_dir; IFS= read -r git_top; IFS= read -r head_sha; IFS= read -r branch_full; } \
+    < <(git_safe rev-parse --git-dir --show-toplevel HEAD --abbrev-ref HEAD 2>/dev/null)
+fi
+if [ -n "$git_dir" ]; then
+  [ "$branch_full" = HEAD ] && branch_full="${head_sha:0:7}"
+  [ -z "$branch_full" ] && branch_full=$(git_safe branch --show-current 2>/dev/null)   # unborn HEAD
+  branch_full="${branch_full//$SCRUB_PAT/}"
+  branch="$branch_full"
   # Truncate to 20 codepoints. Bash's ${#var}/${var:0:n} are codepoint-aware
   # under a UTF-8 locale. en_US.UTF-8 ships on macOS by default and on
   # virtually every standard Linux. If absent (stripped containers), bash
@@ -423,7 +435,7 @@ fetch_mr() {
 # Cache line: status sha url — status normalised to GitLab's vocabulary
 fetch_ci() {
   if [ "$mr_host" = github ]; then
-    gh run list --branch "$branch" --limit 1 --json status,conclusion,headSha,url 2>/dev/null \
+    gh run list --branch "$branch_full" --limit 1 --json status,conclusion,headSha,url 2>/dev/null \
       | jq -r '.[0] | select(. != null) | [
           (if .status == "completed" then
              ({success:"success", failure:"failed", timed_out:"failed", startup_failure:"failed",
@@ -441,13 +453,21 @@ if [ -n "$branch" ]; then
   # Remote to classify: origin, else the branch's upstream remote, else the
   # first remote listed. Repos that name their only remote `gitlab` or
   # `github` are common enough to matter.
-  remote=origin
-  git_safe remote get-url origin >/dev/null 2>&1 || {
-    remote=$(git_safe config "branch.$branch.remote" 2>/dev/null)
-    [ -z "$remote" ] && remote=$(git_safe remote 2>/dev/null | head -1)
-  }
-  origin=""
-  [ -n "$remote" ] && origin=$(git_safe remote get-url "$remote" 2>/dev/null)
+  # One `git config` call yields every remote URL and the branch's upstream.
+  origin="" first_url="" upstream="" upstream_url=""
+  while IFS=' ' read -r k v; do
+    case "$k" in
+      remote.origin.url) origin="$v" ;;
+      remote.*.url)      [ -z "$first_url" ] && first_url="$v"
+                         [ -n "$upstream" ] && [ "$k" = "remote.$upstream.url" ] && upstream_url="$v" ;;
+      "branch.$branch_full.remote") upstream="$v" ;;
+    esac
+  done < <(git_safe config --get-regexp '^remote\..*\.url$|^branch\..*\.remote$' 2>/dev/null)
+  if [ -z "$origin" ] && [ -n "$upstream" ]; then
+    [ -z "$upstream_url" ] && upstream_url=$(git_safe config "remote.$upstream.url" 2>/dev/null)
+    origin="$upstream_url"
+  fi
+  [ -z "$origin" ] && origin="$first_url"
   case "$origin" in
     "")                                 ;;
     *github.com[:/]*)                   command -v gh   >/dev/null 2>&1 && mr_host=github ;;
@@ -457,10 +477,11 @@ fi
 if [ -n "$mr_host" ]; then
   mr_prefix=$MR_PREFIX_GITLAB
   [ "$mr_host" = github ] && mr_prefix=$MR_PREFIX_GITHUB
-  top=$(git_safe rev-parse --show-toplevel 2>/dev/null)
-  key=$(printf '%s|%s' "$top" "$branch" | cksum | cut -d' ' -f1)
+  key=$(printf '%s|%s' "$git_top" "$branch_full" | cksum | cut -d' ' -f1)
   mkdir -p "$MR_CACHE_DIR" 2>/dev/null
-  mr_file="$MR_CACHE_DIR/$key.mr"
+  mr_file="$MR_CACHE_DIR/$key.mr" ci_file="$MR_CACHE_DIR/$key.ci"
+  # One find answers "which cache files are still fresh?" for both segments.
+  fresh=$(find "$mr_file" "$ci_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
   if [ -f "$mr_file" ]; then
     IFS=$'\t' read -r mr_iid mr_state mr_draft mr_status mr_conflicts mr_url < "$mr_file" || true
     mr_iid="${mr_iid//$SCRUB_PAT/}" mr_state="${mr_state//$SCRUB_PAT/}"
@@ -497,20 +518,17 @@ if [ -n "$mr_host" ]; then
         mr_str=$(printf "\033[38;5;%dm%s%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$mr_prefix$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
       fi
     fi
-    stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
-    [ -z "$stale" ] && bg_refresh "$mr_file" fetch_mr
+    case "$fresh" in *"$mr_file"*) ;; *) bg_refresh "$mr_file" fetch_mr ;; esac
   else
     bg_refresh "$mr_file" fetch_mr
   fi
 
   # ─── Pipeline dot ───
-  ci_file="$MR_CACHE_DIR/$key.ci"
   if [ -f "$ci_file" ]; then
     IFS=$'\t' read -r ci_status ci_sha ci_url < "$ci_file" || true
     ci_status="${ci_status//$SCRUB_PAT/}" ci_sha="${ci_sha//$SCRUB_PAT/}" ci_url="${ci_url//$SCRUB_PAT/}"
     case "$ci_url" in https://*|http://*) ;; *) ci_url="" ;; esac
     if [ -n "$ci_status" ]; then
-      head_sha=$(git_safe rev-parse HEAD 2>/dev/null)
       if [ -n "$ci_sha" ] && [ "$ci_sha" != "$head_sha" ]; then
         ci_dot=$CI_WAIT
       else
@@ -527,8 +545,7 @@ if [ -n "$mr_host" ]; then
       ci_str="$ci_dot"
       [ -n "$ci_url" ] && ci_str=$'\033]8;;'"$ci_url"$'\a'"$ci_str"$'\033]8;;\a'
     fi
-    stale=$(find "$ci_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
-    [ -z "$stale" ] && bg_refresh "$ci_file" fetch_ci
+    case "$fresh" in *"$ci_file"*) ;; *) bg_refresh "$ci_file" fetch_ci ;; esac
   else
     bg_refresh "$ci_file" fetch_ci
   fi
