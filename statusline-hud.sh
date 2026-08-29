@@ -364,7 +364,9 @@ fi
 
 # ─── GitLab MR badge ────────────────────────────────────────────────────────
 # Cache file per repo+branch holds one TSV line: iid state draft status
-# conflicts. An empty file is a cached "no MR". mr_refresh() runs glab in a
+# conflicts web_url. An empty file is a cached "no MR". The badge is wrapped
+# in an OSC 8 hyperlink to web_url, so terminals that support it (Ghostty,
+# iTerm2, Kitty, WezTerm) make it Cmd/Ctrl-clickable; others show plain text. mr_refresh() runs glab in a
 # detached background job with all fds closed so the render (and anything
 # capturing its stdout) never waits on it; a lock dir stops concurrent
 # renders from stacking up glab calls.
@@ -378,7 +380,7 @@ mr_refresh() {
   (
     cd "$cwd" 2>/dev/null || exit
     glab mr view --output json 2>/dev/null \
-      | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring)] | @tsv' \
+      | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring), (.web_url // "-")] | @tsv' \
       > "$f.tmp" 2>/dev/null
     mv -f "$f.tmp" "$f" 2>/dev/null
     rmdir "$lock" 2>/dev/null
@@ -391,9 +393,10 @@ if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
   mkdir -p "$MR_CACHE_DIR" 2>/dev/null
   mr_file="$MR_CACHE_DIR/$key.mr"
   if [ -f "$mr_file" ]; then
-    IFS=$'\t' read -r mr_iid mr_state mr_draft mr_status mr_conflicts < "$mr_file" || true
+    IFS=$'\t' read -r mr_iid mr_state mr_draft mr_status mr_conflicts mr_url < "$mr_file" || true
     mr_iid="${mr_iid//$SCRUB_PAT/}" mr_state="${mr_state//$SCRUB_PAT/}"
-    mr_status="${mr_status//$SCRUB_PAT/}"
+    mr_status="${mr_status//$SCRUB_PAT/}" mr_url="${mr_url//$SCRUB_PAT/}"
+    case "$mr_url" in https://*|http://*) ;; *) mr_url="" ;; esac
     if [[ "$mr_iid" =~ ^[0-9]+$ ]]; then
       case "$mr_state" in
         merged) mr_str=$(printf "\033[38;5;%dm⇄ !%s%s" "$C_MR_MERGED" "$mr_iid" "$C_OFF") ;;
@@ -412,6 +415,7 @@ if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
             esac
           fi ;;
       esac
+      [ -n "$mr_str" ] && [ -n "$mr_url" ] && mr_str=$'\033]8;;'"$mr_url"$'\a'"$mr_str"$'\033]8;;\a'
     fi
     stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
     [ -z "$stale" ] && mr_refresh "$mr_file"

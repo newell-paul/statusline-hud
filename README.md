@@ -20,7 +20,7 @@ Left to right:
 - **7-day rate-limit bar** — the limit that actually locks you out for the week; same colour tiers as 5h
 - **Reset countdown** `↺2h14m` — only shown when a rate-limit bar climbs above 60%
 - **Cache hit ratio** `↩97%` — from `prompt_cache.hit_ratio` (Claude Code ≥ 2.1.251, session-wide); green ≥60%, amber 30–59%, red below. Flips to cyan `❄97%` when the cached prefix has gone cold — the next turn re-caches everything. Older versions fall back to per-turn maths, shown only when input tokens > 5k
-- **MR badge** — the GitLab merge request for the current branch via `glab`: `!23 ✓` mergeable (green), `!23 ✗` conflicts (red), `!23` pipeline still checking (yellow), `✎ !23` draft (grey), `⇄ !23` merged (purple). Lookups run in the background and are cached per repo+branch for 60s, so a render never waits on the network. Hidden when `glab` isn't installed or the branch has no MR
+- **MR badge** — the GitLab merge request for the current branch via `glab`: `!23 ✓` mergeable (green), `!23 ✗` conflicts (red), `!23` pipeline still checking (yellow), `✎ !23` draft (grey), `⇄ !23` merged (purple). Cmd/Ctrl-click opens the MR in terminals that support OSC 8 hyperlinks (Ghostty, iTerm2, Kitty, WezTerm). Lookups run in the background and are cached per repo+branch for 60s, so a render never waits on the network. Hidden when `glab` isn't installed or the branch has no MR
 - **Session totals** 🔥 — cumulative session spend in USD (default), straight from `cost.total_cost_usd`. Green under $5, amber $5–$20, red ≥ $20 (tuned for Max-plan users. Flip `TURN_UNIT=tokens` for input-token count instead; tweak `TURN_HI_USD` / `TURN_MED_USD` (or `_TOK` equivalents) to shift the thresholds.
 
 Each bar is five cells (20% per cell) with eight sub-step glyphs (`▏▎▍▌▋▊▉█`) so the fill advances smoothly within a cell rather than jumping a whole 20% at a time. The whole bar takes one colour from its current tier — there's no per-cell gradient.
@@ -108,7 +108,7 @@ brew install bats-core
 bats tests/
 ```
 
-103 tests cover bars, effort levels, git states, reset countdowns, cache ratios, the cold-cache ❄ flip, the glab MR badge (fake `glab` on PATH, cache freshness, per-branch keys), the session-cumulative cost/token segment, malformed input, and a recorded JSON contract. The contract test fails if Anthropic adds, renames, removes, or changes the type of any field in the recorded fixture (`tests/fixtures/real-opus.json`).
+106 tests cover bars, effort levels, git states, reset countdowns, cache ratios, the cold-cache ❄ flip, the glab MR badge (fake `glab` on PATH, cache freshness, per-branch keys), the session-cumulative cost/token segment, malformed input, and a recorded JSON contract. The contract test fails if Anthropic adds, renames, removes, or changes the type of any field in the recorded fixture (`tests/fixtures/real-opus.json`).
 
 To refresh the contract after an intentional schema change: `./tests/regen-schema.sh`.
 

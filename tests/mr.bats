@@ -160,3 +160,30 @@ render_after_refresh() {
   render_after_refresh
   [[ "$output" != *$'\033[2J'* ]]
 }
+
+# --- Clickable badge (OSC 8) -----------------------------------------------
+
+mr_json_url() {
+  printf '{"iid":23,"state":"opened","draft":false,"detailed_merge_status":"mergeable","has_conflicts":false,"web_url":"https://gitlab.example/g/p/-/merge_requests/23"}'
+}
+
+@test "badge is wrapped in an OSC 8 hyperlink to web_url" {
+  fake_glab "$(mr_json_url)"
+  render_after_refresh
+  [[ "$output" == *$'\033]8;;https://gitlab.example/g/p/-/merge_requests/23\a'* ]]
+  [[ "$output" == *"!23 ✓"$'\033[0m\033]8;;\a'* ]]
+}
+
+@test "badge without a web_url renders plain, no OSC 8" {
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" == *"!23 ✓"* ]]
+  [[ "$output" != *$'\033]8;;'* ]]
+}
+
+@test "non-http web_url is ignored" {
+  fake_glab "$(printf '{"iid":23,"state":"opened","draft":false,"detailed_merge_status":"mergeable","has_conflicts":false,"web_url":"javascript:alert(1)"}')"
+  render_after_refresh
+  [[ "$output" == *"!23 ✓"* ]]
+  [[ "$output" != *$'\033]8;;'* ]]
+}
