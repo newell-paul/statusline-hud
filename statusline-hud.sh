@@ -6,8 +6,8 @@
 # statusline-hud.sh — Claude Code statusline.
 # Reads one JSON payload from stdin, prints one ANSI-coloured status line.
 # Sections include: cwd, git, model + effort/fast badges, ctx/5h/7d power
-# bars, cache-hit ratio, and a 🔥 cumulative session spend (or input-token)
-# gauge. Reorder or disable sections by editing SEGMENTS in the CONFIG
+# bars, prompt-cache hit ratio, GitLab MR badge, and a 🔥 cumulative session
+# spend (or input-token) gauge. Reorder or disable sections by editing SEGMENTS in the CONFIG
 # block below.
 set -u
 command -v jq >/dev/null || { printf "\033[38;5;196m⚠ jq missing\033[0m"; exit 1; }
@@ -91,9 +91,24 @@ C_CACHE_HI=92
 C_CACHE_MED=33
 C_CACHE_LO=31
 
+C_CACHE_COLD=36         # ❄ when prompt_cache.warm=false (cyan, informational)
+
 # Minimums before a derived metric is meaningful enough to display
 CACHE_MIN_TOKENS=5000       # below this, cache hit% is statistically meaningless
 RESET_COUNTDOWN_PCT=60      # show "resets in ↺Xh Ym" once a limit crosses this
+
+# GitLab MR badge (mr segment). `glab mr view` takes ~1s and the statusline
+# renders on every keystroke, so lookups run in the background and are cached
+# per repo+branch. A render never waits on glab: stale entries are shown as-is
+# while a refresh runs. Needs `glab` on PATH; silently absent otherwise.
+MR_TTL=60                        # seconds before a cached lookup is refreshed
+MR_CACHE_DIR=/tmp/statusline-hud-$UID
+C_MR_OK=46              # opened + mergeable → green  "!23 ✓"
+C_MR_BAD=196            # conflicts / unmergeable → red "!23 ✗"
+C_MR_PENDING=226        # pipeline / mergeability still checking → yellow "!23"
+C_MR_DRAFT=245          # draft → grey "✎ !23"
+C_MR_MERGED=99          # merged → purple "⇄ !23"
+C_MR_CLOSED=240         # closed → dim "!23"
 
 # Which segments render, in left-to-right order. Comment a line to disable;
 # move lines to reorder. Recognised: dir, git, model, ctx, rl5, rl7, cache, turn
@@ -104,7 +119,9 @@ SEGMENTS=(
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   # rl7         # 7-day rate-limit bar with reset countdown
-  cache       # session-wide cache-hit ratio
+  cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
+  mr          # GitLab MR badge for the current branch (needs glab)
+  # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   turn        # cumulative session tokens or USD (🔥)
 )
 # ────────────────────────────────────────────────────────────────────────────
@@ -120,7 +137,10 @@ RESET_FG=$'\033[38;5;'"$C_RESET_TXT"'m'
 # ─── Parse JSON payload ─────────────────────────────────────────────────────
 # tsv columns, in order:
 #   cwd, model, used%, cost$, rl5%, effort, fast,
-#   rl7%, rl5_reset, rl7_reset, cache_read_tokens, total_input_tokens
+#   rl7%, rl5_reset, rl7_reset, cache_read_tokens, total_input_tokens,
+#   prompt_cache.hit_ratio (0–1), prompt_cache.warm (true/false)
+# Optional fields emit "-" rather than "" so `read` (tab is whitespace IFS,
+# consecutive tabs collapse) keeps every column in place.
 tsv=$(jq -r '[
   .workspace.current_dir // .cwd // "",
   .model.display_name // .model.name // "?",
@@ -133,16 +153,20 @@ tsv=$(jq -r '[
   ((.rate_limits.five_hour.resets_at // 0) | tonumber? // 0 | floor),
   ((.rate_limits.seven_day.resets_at // 0) | tonumber? // 0 | floor),
   ((.context_window.current_usage.cache_read_input_tokens // 0) | tonumber? // 0 | floor),
-  ((.context_window.total_input_tokens // 0) | tonumber? // 0 | floor)
+  ((.context_window.total_input_tokens // 0) | tonumber? // 0 | floor),
+  (.prompt_cache.hit_ratio | if type == "number" then tostring else "-" end),
+  (.prompt_cache.warm | if type == "boolean" then tostring else "-" end)
 ] | @tsv' 2>/dev/null) || { printf "\033[38;5;240m(parse failed)\033[0m"; exit 0; }
 [ -z "$tsv" ] && { printf "\033[38;5;240m(parse failed)\033[0m"; exit 0; }
 
 # The 'x' prefix is a sentinel that stops `read` from collapsing a leading
 # empty cwd field; it's stripped immediately below.
-IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input < <(printf 'x%s\n' "$tsv")
+IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input pc_ratio pc_warm < <(printf 'x%s\n' "$tsv")
 cwd="${cwd#x}"
 used=${used:-0} rl5=${rl5:-0} cost=${cost:-0} effort=${effort:-} fast=${fast:-false}
 rl7=${rl7:-0} rl5_reset=${rl5_reset:-0} rl7_reset=${rl7_reset:-0} cache_read=${cache_read:-0} total_input=${total_input:-0}
+[ "$pc_ratio" = "-" ] && pc_ratio=""
+[ "$pc_warm" = "-" ] && pc_warm=""
 [ "$effort" = "-" ] && effort=""
 
 # Strip control bytes from any field that will be emitted to the terminal or
@@ -314,16 +338,86 @@ elif (( rl7 >= RESET_COUNTDOWN_PCT )); then
 fi
 
 # ─── Cache hit ratio ────────────────────────────────────────────────────────
-# Only meaningful once the session has crossed CACHE_MIN_TOKENS total input.
+# Prefer prompt_cache (Claude Code ≥ 2.1.251): session-wide hit ratio plus
+# whether the cached prefix is still warm. Cold (❄) means the next turn
+# re-caches the whole prefix. Older payloads fall back to per-turn maths,
+# which is only meaningful once the session has crossed CACHE_MIN_TOKENS.
 cache_str=""
-if (( total_input > CACHE_MIN_TOKENS )); then
+ratio=""
+glyph="↩"
+if [ -n "$pc_ratio" ]; then
+  ratio=$(LC_ALL=C awk -v r="$pc_ratio" 'BEGIN{printf "%d", r*100}')
+  [[ "$ratio" =~ ^[0-9]+$ ]] || ratio=0
+  [ "$pc_warm" = false ] && glyph="❄"
+elif (( total_input > CACHE_MIN_TOKENS )); then
   ratio=$(( cache_read * 100 / total_input ))
+fi
+if [ -n "$ratio" ]; then
   (( ratio > 100 )) && ratio=100
-  if   (( ratio >= CACHE_HI_PCT ));  then ccol=$C_CACHE_HI
+  if   [ "$glyph" = "❄" ];           then ccol=$C_CACHE_COLD
+  elif (( ratio >= CACHE_HI_PCT ));  then ccol=$C_CACHE_HI
   elif (( ratio >= CACHE_MED_PCT )); then ccol=$C_CACHE_MED
   else                                    ccol=$C_CACHE_LO
   fi
-  cache_str=$(printf "\033[%dm↩%d%%%s" "$ccol" "$ratio" "$C_OFF")
+  cache_str=$(printf "\033[%dm%s%d%%%s" "$ccol" "$glyph" "$ratio" "$C_OFF")
+fi
+
+# ─── GitLab MR badge ────────────────────────────────────────────────────────
+# Cache file per repo+branch holds one TSV line: iid state draft status
+# conflicts. An empty file is a cached "no MR". mr_refresh() runs glab in a
+# detached background job with all fds closed so the render (and anything
+# capturing its stdout) never waits on it; a lock dir stops concurrent
+# renders from stacking up glab calls.
+mr_str=""
+mr_refresh() {
+  local f="$1" lock="$1.lock"
+  mkdir "$lock" 2>/dev/null || {
+    [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$lock" 2>/dev/null
+    return
+  }
+  (
+    cd "$cwd" 2>/dev/null || exit
+    glab mr view --output json 2>/dev/null \
+      | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring)] | @tsv' \
+      > "$f.tmp" 2>/dev/null
+    mv -f "$f.tmp" "$f" 2>/dev/null
+    rmdir "$lock" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null
+}
+if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
+  top=$(git_safe rev-parse --show-toplevel 2>/dev/null)
+  key=$(printf '%s|%s' "$top" "$branch" | cksum | cut -d' ' -f1)
+  mkdir -p "$MR_CACHE_DIR" 2>/dev/null
+  mr_file="$MR_CACHE_DIR/$key.mr"
+  if [ -f "$mr_file" ]; then
+    IFS=$'\t' read -r mr_iid mr_state mr_draft mr_status mr_conflicts < "$mr_file" || true
+    mr_iid="${mr_iid//$SCRUB_PAT/}" mr_state="${mr_state//$SCRUB_PAT/}"
+    mr_status="${mr_status//$SCRUB_PAT/}"
+    if [[ "$mr_iid" =~ ^[0-9]+$ ]]; then
+      case "$mr_state" in
+        merged) mr_str=$(printf "\033[38;5;%dm⇄ !%s%s" "$C_MR_MERGED" "$mr_iid" "$C_OFF") ;;
+        closed) mr_str=$(printf "\033[38;5;%dm!%s%s" "$C_MR_CLOSED" "$mr_iid" "$C_OFF") ;;
+        *)
+          if [ "$mr_draft" = true ]; then
+            mr_str=$(printf "\033[38;5;%dm✎ !%s%s" "$C_MR_DRAFT" "$mr_iid" "$C_OFF")
+          elif [ "$mr_conflicts" = true ]; then
+            mr_str=$(printf "\033[38;5;%dm!%s ✗%s" "$C_MR_BAD" "$mr_iid" "$C_OFF")
+          else
+            case "$mr_status" in
+              mergeable) mr_str=$(printf "\033[38;5;%dm!%s ✓%s" "$C_MR_OK" "$mr_iid" "$C_OFF") ;;
+              checking|unchecked|ci_still_running|preparing|approvals_syncing)
+                         mr_str=$(printf "\033[38;5;%dm!%s%s" "$C_MR_PENDING" "$mr_iid" "$C_OFF") ;;
+              *)         mr_str=$(printf "\033[38;5;%dm!%s ✗%s" "$C_MR_BAD" "$mr_iid" "$C_OFF") ;;
+            esac
+          fi ;;
+      esac
+    fi
+    stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
+    [ -z "$stale" ] && mr_refresh "$mr_file"
+  else
+    mr_refresh "$mr_file"
+  fi
 fi
 
 # ─── Segment renderers ──────────────────────────────────────────────────────
@@ -347,7 +441,22 @@ seg_rl7()   {
   fi
 }
 seg_cache() { printf "%s" "$cache_str"; }
+seg_mr()    { printf "%s" "$mr_str"; }
 seg_turn()  { printf "%s" "$turn"; }
+# opcode-lite verdict: reads <cwd>/.opcode-status (one line: "<glyph> <OP> <note>").
+# Empty/absent → empty segment → skipped, so it only shows in opcode-lite projects.
+seg_opcode() {
+  local f="$cwd/.opcode-status" line="" color
+  [ -r "$f" ] || return 0
+  { IFS= read -r line || [ -n "$line" ]; } < "$f"
+  [ -z "$line" ] && return 0
+  case "$line" in
+    "✗"*) color=196 ;;   # fail → red
+    "✓"*) color=46  ;;   # pass → green
+    *)    color=214 ;;   # other → amber
+  esac
+  printf "opcode \033[38;5;%dm%s%s" "$color" "$line" "$C_OFF"
+}
 
 # ─── Compose final line ─────────────────────────────────────────────────────
 # Walk SEGMENTS in order. Empty segments are skipped entirely (so the
