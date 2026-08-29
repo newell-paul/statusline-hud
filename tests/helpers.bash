@@ -13,11 +13,28 @@ SCRIPT="${BATS_TEST_DIRNAME}/../statusline-hud.sh"
 # so $status and $output are populated.
 # Usage: run_hud '<json>'
 # Optional local the caller can set before invoking:
-#   TURN_UNIT = usd | tokens
+#   TURN_UNIT    = usd | tokens
+# The turn and cache segments are re-enabled in the patched copy regardless of
+# whether they are commented out in SEGMENTS, so their bats files always
+# exercise them.
+#   MR_CACHE_DIR = directory for the mr segment's glab cache (isolates tests)
+#   MR_TTL       = seconds before a cached MR lookup is considered stale
+#   C_MR_LINK    = link colour for the MR ref ("" = inherit state colour)
+#   MR_LINK_STYLE = SGR for a linked ref (tests default to 4, underline)
+#   MR_PREFIX_GITLAB = text before a GitLab MR number (tests default to "!")
+#   MR_PREFIX_GITHUB = text before a GitHub PR number (tests default to "🐙 #")
 run_hud() {
   local patched
   patched=$(mktemp)
   sed -e "s|^TURN_UNIT=.*|TURN_UNIT=${TURN_UNIT:-usd}|" \
+      -e "s|^MR_CACHE_DIR=.*|MR_CACHE_DIR=${MR_CACHE_DIR:-/tmp/statusline-hud-test-\$\$}|" \
+      -e "s|^MR_TTL=.*|MR_TTL=${MR_TTL:-60}|" \
+      -e "s|^C_MR_LINK=.*|C_MR_LINK=${C_MR_LINK-39}|" \
+      -e "s|^MR_LINK_STYLE=.*|MR_LINK_STYLE=${MR_LINK_STYLE-4}|" \
+      -e "s|^  # turn  |  turn  |" \
+      -e "s|^  # cache  |  cache  |" \
+      -e "s|^MR_PREFIX_GITLAB=.*|MR_PREFIX_GITLAB=\"${MR_PREFIX_GITLAB-!}\"|" \
+      -e "s|^MR_PREFIX_GITHUB=.*|MR_PREFIX_GITHUB=\"${MR_PREFIX_GITHUB-🐙 #}\"|" \
     "$SCRIPT" > "$patched"
   run bash "$patched" <<<"$1"
   rm -f "$patched"
@@ -70,6 +87,8 @@ make_json() {
   local cache_read=0
   local total_input=0
   local cost=0.1
+  local pc_ratio=""
+  local pc_warm=""
 
   for kv in "$@"; do
     local k="${kv%%=*}" v="${kv#*=}"
@@ -86,11 +105,17 @@ make_json() {
       cache_read) cache_read="$v" ;;
       total_input) total_input="$v" ;;
       cost) cost="$v" ;;
+      pc_ratio) pc_ratio="$v" ;;
+      pc_warm) pc_warm="$v" ;;
     esac
   done
 
   local effort_json="null"
   [ -n "$effort" ] && effort_json="{\"level\":\"$effort\"}"
+  local pc_json=""
+  if [ -n "$pc_ratio" ] || [ -n "$pc_warm" ]; then
+    pc_json=",\"prompt_cache\": {\"hit_ratio\": ${pc_ratio:-null}, \"warm\": ${pc_warm:-null}, \"ttl\": \"1h\"}"
+  fi
 
   cat <<EOF
 {
@@ -107,7 +132,7 @@ make_json() {
   "rate_limits": {
     "five_hour": {"used_percentage": $rl5, "resets_at": $rl5_reset},
     "seven_day": {"used_percentage": $rl7, "resets_at": $rl7_reset}
-  }
+  }$pc_json
 }
 EOF
 }

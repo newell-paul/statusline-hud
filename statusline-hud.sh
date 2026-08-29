@@ -6,8 +6,8 @@
 # statusline-hud.sh — Claude Code statusline.
 # Reads one JSON payload from stdin, prints one ANSI-coloured status line.
 # Sections include: cwd, git, model + effort/fast badges, ctx/5h/7d power
-# bars, cache-hit ratio, and a 🔥 cumulative session spend (or input-token)
-# gauge. Reorder or disable sections by editing SEGMENTS in the CONFIG
+# bars, prompt-cache hit ratio, GitLab MR / GitHub PR badge, and a 🔥 cumulative session
+# spend (or input-token) gauge. Reorder or disable sections by editing SEGMENTS in the CONFIG
 # block below.
 set -u
 command -v jq >/dev/null || { printf "\033[38;5;196m⚠ jq missing\033[0m"; exit 1; }
@@ -91,22 +91,53 @@ C_CACHE_HI=92
 C_CACHE_MED=33
 C_CACHE_LO=31
 
+C_CACHE_COLD=36         # ❄ when prompt_cache.warm=false (cyan, informational)
+
 # Minimums before a derived metric is meaningful enough to display
 CACHE_MIN_TOKENS=5000       # below this, cache hit% is statistically meaningless
 RESET_COUNTDOWN_PCT=60      # show "resets in ↺Xh Ym" once a limit crosses this
+
+# MR/PR badge (mr segment). The `origin` remote picks the CLI: github.com →
+# `gh pr view`, anything else → `glab mr view` (gitlab.com or self-hosted).
+# Both take ~1s and the statusline renders on every keystroke, so lookups run
+# in the background and are cached per repo+branch. A render never waits on
+# the CLI: stale entries are shown as-is while a refresh runs. Silently
+# absent when the matching CLI isn't on PATH or there's no origin.
+MR_TTL=60                        # seconds before a cached lookup is refreshed
+MR_CACHE_DIR=/tmp/statusline-hud-$UID
+C_MR_OK=46              # opened + mergeable → green  "!23 ✓"
+C_MR_BAD=196            # conflicts / unmergeable → red "!23 ✗"
+C_MR_PENDING=226        # pipeline / mergeability still checking → yellow "!23"
+C_MR_DRAFT=245          # draft → grey "✎ !23"
+C_MR_MERGED=99          # merged → purple "⇄ !23"
+C_MR_CLOSED=240         # closed → dim "!23"
+MR_PREFIX_GITLAB="🦊 !"  # before a GitLab MR number; try "!", "MR ", or Nerd Font " " if it renders
+MR_PREFIX_GITHUB="🐙 #"  # before a GitHub PR number; try "#", "PR "
+# Pipeline dot (ci segment): latest pipeline/run for the branch, linked to it.
+CI_PASS="🟢"; CI_FAIL="🔴"; CI_RUN="🟡"; CI_WAIT="⚪"; CI_CANCEL="⚫"; CI_SKIP="⏭"; CI_MANUAL="✋"
+# CI_WAIT also stands in when the newest pipeline is for an older commit than
+# your local HEAD — its result isn't about the code you're looking at.
+C_MR_LINK=39            # "!23" text when the badge is a clickable link;
+                        # "" = keep the state colour (underline only)
+MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 none
 
 # Which segments render, in left-to-right order. Comment a line to disable;
 # move lines to reorder. Recognised: dir, git, model, ctx, rl5, rl7, cache, turn
 SEGMENTS=(
   # dir         # current working directory
   git         # branch name, ahead/behind, dirty marker
+  mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
+  ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model display name, effort badge, fast-mode rocket
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
-  # rl7         # 7-day rate-limit bar with reset countdown
-  cache       # session-wide cache-hit ratio
-  turn        # cumulative session tokens or USD (🔥)
+  rl7         # 7-day rate-limit bar with reset countdown
+  # cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
+  # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
+  # turn        # cumulative session tokens or USD (🔥)
 )
+  # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
+  # turn        # cumulative session tokens or USD (🔥)
 # ────────────────────────────────────────────────────────────────────────────
 
 # ─── Pre-baked ANSI escapes (assignment-time expansion via $'\033') ─────────
@@ -120,7 +151,10 @@ RESET_FG=$'\033[38;5;'"$C_RESET_TXT"'m'
 # ─── Parse JSON payload ─────────────────────────────────────────────────────
 # tsv columns, in order:
 #   cwd, model, used%, cost$, rl5%, effort, fast,
-#   rl7%, rl5_reset, rl7_reset, cache_read_tokens, total_input_tokens
+#   rl7%, rl5_reset, rl7_reset, cache_read_tokens, total_input_tokens,
+#   prompt_cache.hit_ratio (0–1), prompt_cache.warm (true/false)
+# Optional fields emit "-" rather than "" so `read` (tab is whitespace IFS,
+# consecutive tabs collapse) keeps every column in place.
 tsv=$(jq -r '[
   .workspace.current_dir // .cwd // "",
   .model.display_name // .model.name // "?",
@@ -133,16 +167,20 @@ tsv=$(jq -r '[
   ((.rate_limits.five_hour.resets_at // 0) | tonumber? // 0 | floor),
   ((.rate_limits.seven_day.resets_at // 0) | tonumber? // 0 | floor),
   ((.context_window.current_usage.cache_read_input_tokens // 0) | tonumber? // 0 | floor),
-  ((.context_window.total_input_tokens // 0) | tonumber? // 0 | floor)
+  ((.context_window.total_input_tokens // 0) | tonumber? // 0 | floor),
+  (.prompt_cache.hit_ratio | if type == "number" then tostring else "-" end),
+  (.prompt_cache.warm | if type == "boolean" then tostring else "-" end)
 ] | @tsv' 2>/dev/null) || { printf "\033[38;5;240m(parse failed)\033[0m"; exit 0; }
 [ -z "$tsv" ] && { printf "\033[38;5;240m(parse failed)\033[0m"; exit 0; }
 
 # The 'x' prefix is a sentinel that stops `read` from collapsing a leading
 # empty cwd field; it's stripped immediately below.
-IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input < <(printf 'x%s\n' "$tsv")
+IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input pc_ratio pc_warm < <(printf 'x%s\n' "$tsv")
 cwd="${cwd#x}"
 used=${used:-0} rl5=${rl5:-0} cost=${cost:-0} effort=${effort:-} fast=${fast:-false}
 rl7=${rl7:-0} rl5_reset=${rl5_reset:-0} rl7_reset=${rl7_reset:-0} cache_read=${cache_read:-0} total_input=${total_input:-0}
+[ "$pc_ratio" = "-" ] && pc_ratio=""
+[ "$pc_warm" = "-" ] && pc_warm=""
 [ "$effort" = "-" ] && effort=""
 
 # Strip control bytes from any field that will be emitted to the terminal or
@@ -202,11 +240,23 @@ esac
 # many subcommands. The statusline fires on every render, so a malicious repo
 # could otherwise run code on every keystroke.
 git_safe() { git -C "$cwd" -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
-branch="" dirty="" ab=""
-if [ -n "$cwd" ] && git_safe rev-parse --git-dir >/dev/null 2>&1; then
-  branch=$(git_safe branch --show-current 2>/dev/null)
-  [ -z "$branch" ] && branch=$(git_safe rev-parse --short HEAD 2>/dev/null)
-  branch="${branch//$SCRUB_PAT/}"
+branch="" dirty="" ab="" git_top="" head_sha="" branch_full=""
+# One rev-parse answers four questions (in a repo? toplevel? HEAD? branch?).
+# rev-parse options are sticky for the args that follow, so the bare HEAD
+# must come before --abbrev-ref. It prints what it can before failing on an
+# unborn HEAD, so test the first line rather than the exit status. Later
+# blocks (MR badge, pipeline dot) reuse git_top / head_sha / branch_full
+# instead of calling git again.
+git_dir=""
+if [ -n "$cwd" ]; then
+  { IFS= read -r git_dir; IFS= read -r git_top; IFS= read -r head_sha; IFS= read -r branch_full; } \
+    < <(git_safe rev-parse --git-dir --show-toplevel HEAD --abbrev-ref HEAD 2>/dev/null)
+fi
+if [ -n "$git_dir" ]; then
+  [ "$branch_full" = HEAD ] && branch_full="${head_sha:0:7}"
+  [ -z "$branch_full" ] && branch_full=$(git_safe branch --show-current 2>/dev/null)   # unborn HEAD
+  branch_full="${branch_full//$SCRUB_PAT/}"
+  branch="$branch_full"
   # Truncate to 20 codepoints. Bash's ${#var}/${var:0:n} are codepoint-aware
   # under a UTF-8 locale. en_US.UTF-8 ships on macOS by default and on
   # virtually every standard Linux. If absent (stripped containers), bash
@@ -314,16 +364,193 @@ elif (( rl7 >= RESET_COUNTDOWN_PCT )); then
 fi
 
 # ─── Cache hit ratio ────────────────────────────────────────────────────────
-# Only meaningful once the session has crossed CACHE_MIN_TOKENS total input.
+# Prefer prompt_cache (Claude Code ≥ 2.1.251): session-wide hit ratio plus
+# whether the cached prefix is still warm. Cold (❄) means the next turn
+# re-caches the whole prefix. Older payloads fall back to per-turn maths,
+# which is only meaningful once the session has crossed CACHE_MIN_TOKENS.
 cache_str=""
-if (( total_input > CACHE_MIN_TOKENS )); then
+ratio=""
+glyph="↩"
+if [ -n "$pc_ratio" ]; then
+  ratio=$(LC_ALL=C awk -v r="$pc_ratio" 'BEGIN{printf "%d", r*100}')
+  [[ "$ratio" =~ ^[0-9]+$ ]] || ratio=0
+  [ "$pc_warm" = false ] && glyph="❄"
+elif (( total_input > CACHE_MIN_TOKENS )); then
   ratio=$(( cache_read * 100 / total_input ))
+fi
+if [ -n "$ratio" ]; then
   (( ratio > 100 )) && ratio=100
-  if   (( ratio >= CACHE_HI_PCT ));  then ccol=$C_CACHE_HI
+  if   [ "$glyph" = "❄" ];           then ccol=$C_CACHE_COLD
+  elif (( ratio >= CACHE_HI_PCT ));  then ccol=$C_CACHE_HI
   elif (( ratio >= CACHE_MED_PCT )); then ccol=$C_CACHE_MED
   else                                    ccol=$C_CACHE_LO
   fi
-  cache_str=$(printf "\033[%dm↩%d%%%s" "$ccol" "$ratio" "$C_OFF")
+  cache_str=$(printf "\033[%dm%s%d%%%s" "$ccol" "$glyph" "$ratio" "$C_OFF")
+fi
+
+# ─── MR/PR badge + pipeline dot ─────────────────────────────────────────────
+# Cache file per repo+branch holds one TSV line: iid state draft status
+# conflicts web_url. An empty file is a cached "no MR/PR". GitHub's states
+# are normalised into the same vocabulary as GitLab's so one renderer serves
+# both. The badge is wrapped in an OSC 8 hyperlink to web_url, so terminals
+# that support it (Ghostty, iTerm2, Kitty, WezTerm) make it Cmd/Ctrl-
+# clickable; others show plain text. Lookups run via bg_refresh() in a
+# detached background job so the render (and anything capturing its stdout)
+# never waits on them; a lock dir stops concurrent renders from stacking up
+# CLI calls. The pipeline dot shares the same host, key and TTL.
+mr_str="" ci_str=""
+# bg_refresh <cache-file> <fetch-fn>: run fetch-fn (stdout → cache file) in a
+# detached background job. All fds closed so the render never waits on it.
+bg_refresh() {
+  local f="$1" fetch="$2" lock="$1.lock"
+  mkdir "$lock" 2>/dev/null || {
+    [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$lock" 2>/dev/null
+    return
+  }
+  (
+    cd "$cwd" 2>/dev/null || exit
+    "$fetch" > "$f.tmp" 2>/dev/null
+    mv -f "$f.tmp" "$f" 2>/dev/null
+    rmdir "$lock" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null
+}
+# Cache line: iid state draft status conflicts url
+fetch_mr() {
+  if [ "$mr_host" = github ]; then
+    gh pr view --json number,state,isDraft,mergeable,mergeStateStatus,url 2>/dev/null \
+      | jq -r '[
+          .number,
+          ({OPEN:"opened", MERGED:"merged", CLOSED:"closed"}[.state] // "opened"),
+          (.isDraft|tostring),
+          ({CLEAN:"mergeable", HAS_HOOKS:"mergeable", UNSTABLE:"mergeable",
+            DIRTY:"conflict", BEHIND:"checking", BLOCKED:"checking",
+            UNKNOWN:"checking", DRAFT:"checking"}[.mergeStateStatus] // "checking"),
+          ((.mergeable == "CONFLICTING")|tostring),
+          (.url // "-")
+        ] | @tsv'
+  else
+    glab mr view --output json 2>/dev/null \
+      | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring), (.web_url // "-")] | @tsv'
+  fi
+}
+# Cache line: status sha url — status normalised to GitLab's vocabulary
+fetch_ci() {
+  if [ "$mr_host" = github ]; then
+    gh run list --branch "$branch_full" --limit 1 --json status,conclusion,headSha,url 2>/dev/null \
+      | jq -r '.[0] | select(. != null) | [
+          (if .status == "completed" then
+             ({success:"success", failure:"failed", timed_out:"failed", startup_failure:"failed",
+               cancelled:"canceled", skipped:"skipped", action_required:"manual"}[.conclusion] // "pending")
+           elif .status == "in_progress" then "running" else "pending" end),
+          .headSha, (.url // "-")
+        ] | @tsv'
+  else
+    glab ci get --output json 2>/dev/null \
+      | jq -r 'select(.status != null) | [.status, .sha, (.web_url // "-")] | @tsv'
+  fi
+}
+mr_host=""
+if [ -n "$branch" ]; then
+  # Remote to classify: origin, else the branch's upstream remote, else the
+  # first remote listed. Repos that name their only remote `gitlab` or
+  # `github` are common enough to matter.
+  # One `git config` call yields every remote URL and the branch's upstream.
+  origin="" first_url="" upstream="" upstream_url=""
+  while IFS=' ' read -r k v; do
+    case "$k" in
+      remote.origin.url) origin="$v" ;;
+      remote.*.url)      [ -z "$first_url" ] && first_url="$v"
+                         [ -n "$upstream" ] && [ "$k" = "remote.$upstream.url" ] && upstream_url="$v" ;;
+      "branch.$branch_full.remote") upstream="$v" ;;
+    esac
+  done < <(git_safe config --get-regexp '^remote\..*\.url$|^branch\..*\.remote$' 2>/dev/null)
+  if [ -z "$origin" ] && [ -n "$upstream" ]; then
+    [ -z "$upstream_url" ] && upstream_url=$(git_safe config "remote.$upstream.url" 2>/dev/null)
+    origin="$upstream_url"
+  fi
+  [ -z "$origin" ] && origin="$first_url"
+  case "$origin" in
+    "")                                 ;;
+    *github.com[:/]*)                   command -v gh   >/dev/null 2>&1 && mr_host=github ;;
+    *)                                  command -v glab >/dev/null 2>&1 && mr_host=gitlab ;;
+  esac
+fi
+if [ -n "$mr_host" ]; then
+  mr_prefix=$MR_PREFIX_GITLAB
+  [ "$mr_host" = github ] && mr_prefix=$MR_PREFIX_GITHUB
+  key=$(printf '%s|%s' "$git_top" "$branch_full" | cksum | cut -d' ' -f1)
+  mkdir -p "$MR_CACHE_DIR" 2>/dev/null
+  mr_file="$MR_CACHE_DIR/$key.mr" ci_file="$MR_CACHE_DIR/$key.ci"
+  # One find answers "which cache files are still fresh?" for both segments.
+  fresh=$(find "$mr_file" "$ci_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
+  if [ -f "$mr_file" ]; then
+    IFS=$'\t' read -r mr_iid mr_state mr_draft mr_status mr_conflicts mr_url < "$mr_file" || true
+    mr_iid="${mr_iid//$SCRUB_PAT/}" mr_state="${mr_state//$SCRUB_PAT/}"
+    mr_status="${mr_status//$SCRUB_PAT/}" mr_url="${mr_url//$SCRUB_PAT/}"
+    case "$mr_url" in https://*|http://*) ;; *) mr_url="" ;; esac
+    if [[ "$mr_iid" =~ ^[0-9]+$ ]]; then
+      # Badge = [pre glyph] ref [post glyph], all in one state colour. A
+      # linked badge restyles just the ref (underline + C_MR_LINK) so the
+      # state glyph keeps carrying the status signal.
+      mr_pre="" mr_post="" mr_col=$C_MR_PENDING
+      case "$mr_state" in
+        merged) mr_pre="⇄" mr_col=$C_MR_MERGED ;;
+        closed) mr_col=$C_MR_CLOSED ;;
+        *)
+          if [ "$mr_draft" = true ]; then
+            mr_pre="✎" mr_col=$C_MR_DRAFT
+          elif [ "$mr_conflicts" = true ]; then
+            mr_post="✗" mr_col=$C_MR_BAD
+          else
+            case "$mr_status" in
+              mergeable) mr_post="✓" mr_col=$C_MR_OK ;;
+              checking|unchecked|ci_still_running|preparing|approvals_syncing) ;;
+              *)         mr_post="✗" mr_col=$C_MR_BAD ;;
+            esac
+          fi ;;
+      esac
+      if [ -n "$mr_url" ]; then
+        mr_str=""
+        [ -n "$mr_pre" ]  && mr_str+=$(printf "\033[38;5;%dm%s%s " "$mr_col" "$mr_pre" "$C_OFF")
+        mr_str+=$(printf "\033[%dm\033[38;5;%dm%s%s" "$MR_LINK_STYLE" "${C_MR_LINK:-$mr_col}" "$mr_prefix$mr_iid" "$C_OFF")
+        [ -n "$mr_post" ] && mr_str+=$(printf " \033[38;5;%dm%s%s" "$mr_col" "$mr_post" "$C_OFF")
+        mr_str=$'\033]8;;'"$mr_url"$'\a'"$mr_str"$'\033]8;;\a'
+      else
+        mr_str=$(printf "\033[38;5;%dm%s%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$mr_prefix$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
+      fi
+    fi
+    case "$fresh" in *"$mr_file"*) ;; *) bg_refresh "$mr_file" fetch_mr ;; esac
+  else
+    bg_refresh "$mr_file" fetch_mr
+  fi
+
+  # ─── Pipeline dot ───
+  if [ -f "$ci_file" ]; then
+    IFS=$'\t' read -r ci_status ci_sha ci_url < "$ci_file" || true
+    ci_status="${ci_status//$SCRUB_PAT/}" ci_sha="${ci_sha//$SCRUB_PAT/}" ci_url="${ci_url//$SCRUB_PAT/}"
+    case "$ci_url" in https://*|http://*) ;; *) ci_url="" ;; esac
+    if [ -n "$ci_status" ]; then
+      if [ -n "$ci_sha" ] && [ "$ci_sha" != "$head_sha" ]; then
+        ci_dot=$CI_WAIT
+      else
+        case "$ci_status" in
+          success)                 ci_dot=$CI_PASS ;;
+          failed)                  ci_dot=$CI_FAIL ;;
+          running)                 ci_dot=$CI_RUN ;;
+          canceled|canceling)      ci_dot=$CI_CANCEL ;;
+          skipped)                 ci_dot=$CI_SKIP ;;
+          manual)                  ci_dot=$CI_MANUAL ;;
+          *)                       ci_dot=$CI_WAIT ;;
+        esac
+      fi
+      ci_str="$ci_dot"
+      [ -n "$ci_url" ] && ci_str=$'\033]8;;'"$ci_url"$'\a'"$ci_str"$'\033]8;;\a'
+    fi
+    case "$fresh" in *"$ci_file"*) ;; *) bg_refresh "$ci_file" fetch_ci ;; esac
+  else
+    bg_refresh "$ci_file" fetch_ci
+  fi
 fi
 
 # ─── Segment renderers ──────────────────────────────────────────────────────
@@ -347,7 +574,23 @@ seg_rl7()   {
   fi
 }
 seg_cache() { printf "%s" "$cache_str"; }
+seg_mr()    { printf "%s" "$mr_str"; }
+seg_ci()    { printf "%s" "$ci_str"; }
 seg_turn()  { printf "%s" "$turn"; }
+# opcode-lite verdict: reads <cwd>/.opcode-status (one line: "<glyph> <OP> <note>").
+# Empty/absent → empty segment → skipped, so it only shows in opcode-lite projects.
+seg_opcode() {
+  local f="$cwd/.opcode-status" line="" color
+  [ -r "$f" ] || return 0
+  { IFS= read -r line || [ -n "$line" ]; } < "$f"
+  [ -z "$line" ] && return 0
+  case "$line" in
+    "✗"*) color=196 ;;   # fail → red
+    "✓"*) color=46  ;;   # pass → green
+    *)    color=214 ;;   # other → amber
+  esac
+  printf "opcode \033[38;5;%dm%s%s" "$color" "$line" "$C_OFF"
+}
 
 # ─── Compose final line ─────────────────────────────────────────────────────
 # Walk SEGMENTS in order. Empty segments are skipped entirely (so the
