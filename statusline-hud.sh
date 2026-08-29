@@ -113,6 +113,10 @@ C_MR_MERGED=99          # merged → purple "⇄ !23"
 C_MR_CLOSED=240         # closed → dim "!23"
 MR_PREFIX_GITLAB="🦊 !"  # before a GitLab MR number; try "!", "MR ", or Nerd Font " " if it renders
 MR_PREFIX_GITHUB="🐙 #"  # before a GitHub PR number; try "#", "PR "
+# Pipeline dot (ci segment): latest pipeline/run for the branch, linked to it.
+CI_PASS="🟢"; CI_FAIL="🔴"; CI_RUN="🟡"; CI_WAIT="⚪"; CI_CANCEL="⚫"; CI_SKIP="⏭"; CI_MANUAL="✋"
+# CI_WAIT also stands in when the newest pipeline is for an older commit than
+# your local HEAD — its result isn't about the code you're looking at.
 C_MR_LINK=39            # "!23" text when the badge is a clickable link;
                         # "" = keep the state colour (underline only)
 MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 none
@@ -125,11 +129,12 @@ SEGMENTS=(
   model       # model display name, effort badge, fast-mode rocket
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
-  # rl7         # 7-day rate-limit bar with reset countdown
+  rl7         # 7-day rate-limit bar with reset countdown
   cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
   # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   turn        # cumulative session tokens or USD (🔥)
   mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
+  ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
 )
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -369,47 +374,67 @@ if [ -n "$ratio" ]; then
   cache_str=$(printf "\033[%dm%s%d%%%s" "$ccol" "$glyph" "$ratio" "$C_OFF")
 fi
 
-# ─── GitLab MR badge ────────────────────────────────────────────────────────
+# ─── MR/PR badge + pipeline dot ─────────────────────────────────────────────
 # Cache file per repo+branch holds one TSV line: iid state draft status
 # conflicts web_url. An empty file is a cached "no MR/PR". GitHub's states
 # are normalised into the same vocabulary as GitLab's so one renderer serves
 # both. The badge is wrapped in an OSC 8 hyperlink to web_url, so terminals
 # that support it (Ghostty, iTerm2, Kitty, WezTerm) make it Cmd/Ctrl-
-# clickable; others show plain text. mr_refresh() runs glab in a
-# detached background job with all fds closed so the render (and anything
-# capturing its stdout) never waits on it; a lock dir stops concurrent
-# renders from stacking up glab calls.
-mr_str=""
-mr_refresh() {
-  local f="$1" lock="$1.lock"
+# clickable; others show plain text. Lookups run via bg_refresh() in a
+# detached background job so the render (and anything capturing its stdout)
+# never waits on them; a lock dir stops concurrent renders from stacking up
+# CLI calls. The pipeline dot shares the same host, key and TTL.
+mr_str="" ci_str=""
+# bg_refresh <cache-file> <fetch-fn>: run fetch-fn (stdout → cache file) in a
+# detached background job. All fds closed so the render never waits on it.
+bg_refresh() {
+  local f="$1" fetch="$2" lock="$1.lock"
   mkdir "$lock" 2>/dev/null || {
     [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$lock" 2>/dev/null
     return
   }
   (
     cd "$cwd" 2>/dev/null || exit
-    if [ "$mr_host" = github ]; then
-      gh pr view --json number,state,isDraft,mergeable,mergeStateStatus,url 2>/dev/null \
-        | jq -r '[
-            .number,
-            ({OPEN:"opened", MERGED:"merged", CLOSED:"closed"}[.state] // "opened"),
-            (.isDraft|tostring),
-            ({CLEAN:"mergeable", HAS_HOOKS:"mergeable", UNSTABLE:"mergeable",
-              DIRTY:"conflict", BEHIND:"checking", BLOCKED:"checking",
-              UNKNOWN:"checking", DRAFT:"checking"}[.mergeStateStatus] // "checking"),
-            ((.mergeable == "CONFLICTING")|tostring),
-            (.url // "-")
-          ] | @tsv' \
-        > "$f.tmp" 2>/dev/null
-    else
-      glab mr view --output json 2>/dev/null \
-        | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring), (.web_url // "-")] | @tsv' \
-        > "$f.tmp" 2>/dev/null
-    fi
+    "$fetch" > "$f.tmp" 2>/dev/null
     mv -f "$f.tmp" "$f" 2>/dev/null
     rmdir "$lock" 2>/dev/null
   ) </dev/null >/dev/null 2>&1 &
   disown 2>/dev/null
+}
+# Cache line: iid state draft status conflicts url
+fetch_mr() {
+  if [ "$mr_host" = github ]; then
+    gh pr view --json number,state,isDraft,mergeable,mergeStateStatus,url 2>/dev/null \
+      | jq -r '[
+          .number,
+          ({OPEN:"opened", MERGED:"merged", CLOSED:"closed"}[.state] // "opened"),
+          (.isDraft|tostring),
+          ({CLEAN:"mergeable", HAS_HOOKS:"mergeable", UNSTABLE:"mergeable",
+            DIRTY:"conflict", BEHIND:"checking", BLOCKED:"checking",
+            UNKNOWN:"checking", DRAFT:"checking"}[.mergeStateStatus] // "checking"),
+          ((.mergeable == "CONFLICTING")|tostring),
+          (.url // "-")
+        ] | @tsv'
+  else
+    glab mr view --output json 2>/dev/null \
+      | jq -r '[.iid, .state, (.draft|tostring), .detailed_merge_status, (.has_conflicts|tostring), (.web_url // "-")] | @tsv'
+  fi
+}
+# Cache line: status sha url — status normalised to GitLab's vocabulary
+fetch_ci() {
+  if [ "$mr_host" = github ]; then
+    gh run list --branch "$branch" --limit 1 --json status,conclusion,headSha,url 2>/dev/null \
+      | jq -r '.[0] | select(. != null) | [
+          (if .status == "completed" then
+             ({success:"success", failure:"failed", timed_out:"failed", startup_failure:"failed",
+               cancelled:"canceled", skipped:"skipped", action_required:"manual"}[.conclusion] // "pending")
+           elif .status == "in_progress" then "running" else "pending" end),
+          .headSha, (.url // "-")
+        ] | @tsv'
+  else
+    glab ci get --output json 2>/dev/null \
+      | jq -r 'select(.status != null) | [.status, .sha, (.web_url // "-")] | @tsv'
+  fi
 }
 mr_host=""
 if [ -n "$branch" ]; then
@@ -473,9 +498,39 @@ if [ -n "$mr_host" ]; then
       fi
     fi
     stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
-    [ -z "$stale" ] && mr_refresh "$mr_file"
+    [ -z "$stale" ] && bg_refresh "$mr_file" fetch_mr
   else
-    mr_refresh "$mr_file"
+    bg_refresh "$mr_file" fetch_mr
+  fi
+
+  # ─── Pipeline dot ───
+  ci_file="$MR_CACHE_DIR/$key.ci"
+  if [ -f "$ci_file" ]; then
+    IFS=$'\t' read -r ci_status ci_sha ci_url < "$ci_file" || true
+    ci_status="${ci_status//$SCRUB_PAT/}" ci_sha="${ci_sha//$SCRUB_PAT/}" ci_url="${ci_url//$SCRUB_PAT/}"
+    case "$ci_url" in https://*|http://*) ;; *) ci_url="" ;; esac
+    if [ -n "$ci_status" ]; then
+      head_sha=$(git_safe rev-parse HEAD 2>/dev/null)
+      if [ -n "$ci_sha" ] && [ "$ci_sha" != "$head_sha" ]; then
+        ci_dot=$CI_WAIT
+      else
+        case "$ci_status" in
+          success)                 ci_dot=$CI_PASS ;;
+          failed)                  ci_dot=$CI_FAIL ;;
+          running)                 ci_dot=$CI_RUN ;;
+          canceled|canceling)      ci_dot=$CI_CANCEL ;;
+          skipped)                 ci_dot=$CI_SKIP ;;
+          manual)                  ci_dot=$CI_MANUAL ;;
+          *)                       ci_dot=$CI_WAIT ;;
+        esac
+      fi
+      ci_str="$ci_dot"
+      [ -n "$ci_url" ] && ci_str=$'\033]8;;'"$ci_url"$'\a'"$ci_str"$'\033]8;;\a'
+    fi
+    stale=$(find "$ci_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
+    [ -z "$stale" ] && bg_refresh "$ci_file" fetch_ci
+  else
+    bg_refresh "$ci_file" fetch_ci
   fi
 fi
 
@@ -501,6 +556,7 @@ seg_rl7()   {
 }
 seg_cache() { printf "%s" "$cache_str"; }
 seg_mr()    { printf "%s" "$mr_str"; }
+seg_ci()    { printf "%s" "$ci_str"; }
 seg_turn()  { printf "%s" "$turn"; }
 # opcode-lite verdict: reads <cwd>/.opcode-status (one line: "<glyph> <OP> <note>").
 # Empty/absent → empty segment → skipped, so it only shows in opcode-lite projects.
