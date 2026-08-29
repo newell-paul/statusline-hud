@@ -110,7 +110,7 @@ C_MR_DRAFT=245          # draft → grey "✎ !23"
 C_MR_MERGED=99          # merged → purple "⇄ !23"
 C_MR_CLOSED=240         # closed → dim "!23"
 MR_PREFIX="🦊 !"         # text before the MR number; try "!" (GitLab notation), "MR ", "↗ ", or Nerd Font " " if your terminal renders it
-C_MR_LINK=""            # "!23" text when the badge is a clickable link;
+C_MR_LINK=39            # "!23" text when the badge is a clickable link;
                         # "" = keep the state colour (underline only)
 MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 none
 
@@ -124,9 +124,9 @@ SEGMENTS=(
   rl5         # 5-hour rate-limit bar with reset countdown
   # rl7         # 7-day rate-limit bar with reset countdown
   cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
-  mr          # GitLab MR badge for the current branch (needs glab)
   # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   turn        # cumulative session tokens or USD (🔥)
+  mr          # GitLab MR badge for the current branch (needs glab)
 )
 # ────────────────────────────────────────────────────────────────────────────
 
