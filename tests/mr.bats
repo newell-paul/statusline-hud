@@ -211,6 +211,16 @@ mr_json_url() {
   [[ "$output" == *$'\033[38;5;245m✎\033[0m \033[4m\033[38;5;39m!23\033[0m'* ]]
 }
 
+@test "MR_LINK_STYLE=0 with empty C_MR_LINK renders a linked badge with no styling" {
+  MR_LINK_STYLE=0
+  C_MR_LINK=""
+  fake_glab "$(mr_json_url)"
+  render_after_refresh
+  [[ "$output" == *$'\033]8;;https://'* ]]
+  [[ "$output" != *$'\033[4m'* ]]
+  [[ "$output" == *$'\033[38;5;46m!23\033[0m \033[38;5;46m✓\033[0m'* ]]
+}
+
 @test "unlinked badge has no underline" {
   fake_glab "$(mr_json opened false mergeable false)"
   render_after_refresh

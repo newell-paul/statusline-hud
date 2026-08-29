@@ -20,7 +20,7 @@ Left to right:
 - **7-day rate-limit bar** — the limit that actually locks you out for the week; same colour tiers as 5h
 - **Reset countdown** `↺2h14m` — only shown when a rate-limit bar climbs above 60%
 - **Cache hit ratio** `↩97%` — from `prompt_cache.hit_ratio` (Claude Code ≥ 2.1.251, session-wide); green ≥60%, amber 30–59%, red below. Flips to cyan `❄97%` when the cached prefix has gone cold — the next turn re-caches everything. Older versions fall back to per-turn maths, shown only when input tokens > 5k
-- **MR badge** — the GitLab merge request for the current branch via `glab`: `🦊 23 ✓` mergeable (green), `🦊 23 ✗` conflicts (red), `🦊 23` pipeline still checking (yellow), `✎ 🦊 23` draft (grey), `⇄ 🦊 23` merged (purple). Cmd/Ctrl-click opens the MR in terminals that support OSC 8 hyperlinks (Ghostty, iTerm2, Kitty, WezTerm); when linked, the `🦊 23` ref is underlined in link-blue while the state glyph keeps its colour. Lookups run in the background and are cached per repo+branch for 60s, so a render never waits on the network. Hidden when `glab` isn't installed or the branch has no MR
+- **MR badge** — the GitLab merge request for the current branch via `glab`: `🦊 !23 ✓` mergeable (green), `🦊 !23 ✗` conflicts (red), `🦊 !23` pipeline still checking (yellow), `✎ 🦊 !23` draft (grey), `⇄ 🦊 !23` merged (purple). Cmd/Ctrl-click opens the MR in terminals that support OSC 8 hyperlinks (Ghostty, iTerm2, Kitty, WezTerm). Set `MR_LINK_STYLE=4` / `C_MR_LINK=39` to underline the ref in link-blue when it is clickable (off by default). Lookups run in the background and are cached per repo+branch for 60s, so a render never waits on the network. Hidden when `glab` isn't installed or the branch has no MR
 - **Session totals** 🔥 — cumulative session spend in USD (default), straight from `cost.total_cost_usd`. Green under $5, amber $5–$20, red ≥ $20 (tuned for Max-plan users. Flip `TURN_UNIT=tokens` for input-token count instead; tweak `TURN_HI_USD` / `TURN_MED_USD` (or `_TOK` equivalents) to shift the thresholds.
 
 Each bar is five cells (20% per cell) with eight sub-step glyphs (`▏▎▍▌▋▊▉█`) so the fill advances smoothly within a cell rather than jumping a whole 20% at a time. The whole bar takes one colour from its current tier — there's no per-cell gradient.
@@ -89,8 +89,8 @@ Notable settings:
 
 - **`TURN_UNIT`** — `usd` (default) shows the 🔥 segment as cumulative session spend in dollars. Flip to `tokens` for current-context input-token count instead. Note: as of Claude Code v2.1.132, `total_input_tokens` reflects the live context window (drops after `/compact`), not cumulative session totals — so the `tokens`-mode thresholds (`TURN_MED_TOK=120000` / `TURN_HI_TOK=160000`) are tuned as fractions of a 200k context, not session totals. Raise them if you run a 1M-context model.
 - **`SEGMENTS`** — array near the bottom of the CONFIG block listing which segments render and in what order. Comment a line to hide a segment (e.g. `dir`, `rl7`).
-- **`MR_PREFIX`** — text before the MR number. Default is `"🦊 "`. Try `"!"` (GitLab MR notation), `"MR "`, `""`, or the Nerd Font GitLab logo `" "` if your terminal renders private-use glyphs in the status row.
-- **`MR_LINK_STYLE` / `C_MR_LINK`** — SGR attribute (default `4` underline; `1` bold, `0` none) and colour applied to the `!N` ref when the MR badge is a clickable link. Set `C_MR_LINK=""` to keep the ref in its state colour and rely on the underline alone.
+- **`MR_PREFIX`** — text before the MR number. Default is `"🦊 !"`. Try `"!"` (GitLab MR notation), `"MR "`, `""`, or the Nerd Font GitLab logo `" "` if your terminal renders private-use glyphs in the status row.
+- **`MR_LINK_STYLE` / `C_MR_LINK`** — SGR attribute (`0` none — default; `4` underline, `1` bold) and colour (`""` — default — keeps the state colour; e.g. `39` for link-blue) applied to the `!N` ref when the MR badge is a clickable link.
 - **`MR_TTL` / `MR_CACHE_DIR`** — how long (seconds) a `glab mr view` result is reused before a background refresh, and where the per-branch cache files live (`/tmp/statusline-hud-$UID` by default).
 - **`BAR_CTX` / `BAR_LINEAR`** — three tier-boundary percentages controlling when each bar flips colour (green → yellow → orange → red).
 
@@ -110,7 +110,7 @@ brew install bats-core
 bats tests/
 ```
 
-112 tests cover bars, effort levels, git states, reset countdowns, cache ratios, the cold-cache ❄ flip, the glab MR badge (fake `glab` on PATH, cache freshness, per-branch keys), the session-cumulative cost/token segment, malformed input, and a recorded JSON contract. The contract test fails if Anthropic adds, renames, removes, or changes the type of any field in the recorded fixture (`tests/fixtures/real-opus.json`).
+113 tests cover bars, effort levels, git states, reset countdowns, cache ratios, the cold-cache ❄ flip, the glab MR badge (fake `glab` on PATH, cache freshness, per-branch keys), the session-cumulative cost/token segment, malformed input, and a recorded JSON contract. The contract test fails if Anthropic adds, renames, removes, or changes the type of any field in the recorded fixture (`tests/fixtures/real-opus.json`).
 
 To refresh the contract after an intentional schema change: `./tests/regen-schema.sh`.
 
