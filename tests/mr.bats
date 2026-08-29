@@ -217,3 +217,18 @@ mr_json_url() {
   [[ "$output" != *$'\033[4m'* ]]
   [[ "$output" == *$'\033[38;5;46m!23 ✓\033[0m'* ]]
 }
+
+@test "empty C_MR_LINK inherits the state colour for the underlined ref" {
+  C_MR_LINK=""
+  fake_glab "$(mr_json_url)"
+  render_after_refresh
+  [[ "$output" == *$'\033[4m\033[38;5;46m!23\033[0m'* ]]
+}
+
+@test "MR_PREFIX replaces the ! before the ref" {
+  MR_PREFIX="MR "
+  fake_glab "$(mr_json_url)"
+  render_after_refresh
+  [[ "$output" == *"MR 23"* ]]
+  [[ "$output" != *"!23"* ]]
+}

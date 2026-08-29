@@ -109,7 +109,9 @@ C_MR_PENDING=226        # pipeline / mergeability still checking → yellow "!23
 C_MR_DRAFT=245          # draft → grey "✎ !23"
 C_MR_MERGED=99          # merged → purple "⇄ !23"
 C_MR_CLOSED=240         # closed → dim "!23"
-C_MR_LINK=39            # "!23" text when the badge is a clickable link
+MR_PREFIX=" "           # text before the MR number (Nerd Font GitLab fox); try "!", "MR ", "🦊 ", "↗ "
+C_MR_LINK=39            # "!23" text when the badge is a clickable link;
+                        # "" = keep the state colour (underline only)
 MR_LINK_STYLE=4         # SGR applied to a linked ref: 4 underline, 1 bold, 0 none
 
 # Which segments render, in left-to-right order. Comment a line to disable;
@@ -423,11 +425,11 @@ if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
       if [ -n "$mr_url" ]; then
         mr_str=""
         [ -n "$mr_pre" ]  && mr_str+=$(printf "\033[38;5;%dm%s%s " "$mr_col" "$mr_pre" "$C_OFF")
-        mr_str+=$(printf "\033[%dm\033[38;5;%dm!%s%s" "$MR_LINK_STYLE" "$C_MR_LINK" "$mr_iid" "$C_OFF")
+        mr_str+=$(printf "\033[%dm\033[38;5;%dm%s%s" "$MR_LINK_STYLE" "${C_MR_LINK:-$mr_col}" "$MR_PREFIX$mr_iid" "$C_OFF")
         [ -n "$mr_post" ] && mr_str+=$(printf " \033[38;5;%dm%s%s" "$mr_col" "$mr_post" "$C_OFF")
         mr_str=$'\033]8;;'"$mr_url"$'\a'"$mr_str"$'\033]8;;\a'
       else
-        mr_str=$(printf "\033[38;5;%dm%s!%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
+        mr_str=$(printf "\033[38;5;%dm%s%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$MR_PREFIX$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
       fi
     fi
     stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
