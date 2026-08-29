@@ -171,7 +171,7 @@ mr_json_url() {
   fake_glab "$(mr_json_url)"
   render_after_refresh
   [[ "$output" == *$'\033]8;;https://gitlab.example/g/p/-/merge_requests/23\a'* ]]
-  [[ "$output" == *"!23 ✓"$'\033[0m\033]8;;\a'* ]]
+  [[ "$output" == *$'✓\033[0m\033]8;;\a'* ]]
 }
 
 @test "badge without a web_url renders plain, no OSC 8" {
@@ -186,4 +186,34 @@ mr_json_url() {
   render_after_refresh
   [[ "$output" == *"!23 ✓"* ]]
   [[ "$output" != *$'\033]8;;'* ]]
+}
+
+# --- Link styling ------------------------------------------------------------
+# When a web_url is present the !N ref is underlined in C_MR_LINK so it reads
+# as clickable; the state glyph keeps its state colour. Without a URL the
+# badge renders exactly as before — an underline would lie.
+
+@test "linked badge underlines the !N ref in the link colour" {
+  fake_glab "$(mr_json_url)"
+  render_after_refresh
+  [[ "$output" == *$'\033[4m\033[38;5;39m!23\033[0m'* ]]
+}
+
+@test "linked badge keeps the state glyph in its state colour" {
+  fake_glab "$(mr_json_url)"
+  render_after_refresh
+  [[ "$output" == *$'!23\033[0m \033[38;5;46m✓\033[0m'* ]]
+}
+
+@test "linked draft badge keeps ✎ prefix in draft colour before the underlined ref" {
+  fake_glab "$(printf '{"iid":23,"state":"opened","draft":true,"detailed_merge_status":"mergeable","has_conflicts":false,"web_url":"https://gitlab.example/x/-/merge_requests/23"}')"
+  render_after_refresh
+  [[ "$output" == *$'\033[38;5;245m✎\033[0m \033[4m\033[38;5;39m!23\033[0m'* ]]
+}
+
+@test "unlinked badge has no underline" {
+  fake_glab "$(mr_json opened false mergeable false)"
+  render_after_refresh
+  [[ "$output" != *$'\033[4m'* ]]
+  [[ "$output" == *$'\033[38;5;46m!23 ✓\033[0m'* ]]
 }

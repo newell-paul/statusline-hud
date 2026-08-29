@@ -109,6 +109,8 @@ C_MR_PENDING=226        # pipeline / mergeability still checking → yellow "!23
 C_MR_DRAFT=245          # draft → grey "✎ !23"
 C_MR_MERGED=99          # merged → purple "⇄ !23"
 C_MR_CLOSED=240         # closed → dim "!23"
+C_MR_LINK=39            # "!23" text when the badge is a clickable link
+MR_LINK_STYLE=4         # SGR applied to a linked ref: 4 underline, 1 bold, 0 none
 
 # Which segments render, in left-to-right order. Comment a line to disable;
 # move lines to reorder. Recognised: dir, git, model, ctx, rl5, rl7, cache, turn
@@ -398,24 +400,35 @@ if [ -n "$branch" ] && command -v glab >/dev/null 2>&1; then
     mr_status="${mr_status//$SCRUB_PAT/}" mr_url="${mr_url//$SCRUB_PAT/}"
     case "$mr_url" in https://*|http://*) ;; *) mr_url="" ;; esac
     if [[ "$mr_iid" =~ ^[0-9]+$ ]]; then
+      # Badge = [pre glyph] ref [post glyph], all in one state colour. A
+      # linked badge restyles just the ref (underline + C_MR_LINK) so the
+      # state glyph keeps carrying the status signal.
+      mr_pre="" mr_post="" mr_col=$C_MR_PENDING
       case "$mr_state" in
-        merged) mr_str=$(printf "\033[38;5;%dm⇄ !%s%s" "$C_MR_MERGED" "$mr_iid" "$C_OFF") ;;
-        closed) mr_str=$(printf "\033[38;5;%dm!%s%s" "$C_MR_CLOSED" "$mr_iid" "$C_OFF") ;;
+        merged) mr_pre="⇄" mr_col=$C_MR_MERGED ;;
+        closed) mr_col=$C_MR_CLOSED ;;
         *)
           if [ "$mr_draft" = true ]; then
-            mr_str=$(printf "\033[38;5;%dm✎ !%s%s" "$C_MR_DRAFT" "$mr_iid" "$C_OFF")
+            mr_pre="✎" mr_col=$C_MR_DRAFT
           elif [ "$mr_conflicts" = true ]; then
-            mr_str=$(printf "\033[38;5;%dm!%s ✗%s" "$C_MR_BAD" "$mr_iid" "$C_OFF")
+            mr_post="✗" mr_col=$C_MR_BAD
           else
             case "$mr_status" in
-              mergeable) mr_str=$(printf "\033[38;5;%dm!%s ✓%s" "$C_MR_OK" "$mr_iid" "$C_OFF") ;;
-              checking|unchecked|ci_still_running|preparing|approvals_syncing)
-                         mr_str=$(printf "\033[38;5;%dm!%s%s" "$C_MR_PENDING" "$mr_iid" "$C_OFF") ;;
-              *)         mr_str=$(printf "\033[38;5;%dm!%s ✗%s" "$C_MR_BAD" "$mr_iid" "$C_OFF") ;;
+              mergeable) mr_post="✓" mr_col=$C_MR_OK ;;
+              checking|unchecked|ci_still_running|preparing|approvals_syncing) ;;
+              *)         mr_post="✗" mr_col=$C_MR_BAD ;;
             esac
           fi ;;
       esac
-      [ -n "$mr_str" ] && [ -n "$mr_url" ] && mr_str=$'\033]8;;'"$mr_url"$'\a'"$mr_str"$'\033]8;;\a'
+      if [ -n "$mr_url" ]; then
+        mr_str=""
+        [ -n "$mr_pre" ]  && mr_str+=$(printf "\033[38;5;%dm%s%s " "$mr_col" "$mr_pre" "$C_OFF")
+        mr_str+=$(printf "\033[%dm\033[38;5;%dm!%s%s" "$MR_LINK_STYLE" "$C_MR_LINK" "$mr_iid" "$C_OFF")
+        [ -n "$mr_post" ] && mr_str+=$(printf " \033[38;5;%dm%s%s" "$mr_col" "$mr_post" "$C_OFF")
+        mr_str=$'\033]8;;'"$mr_url"$'\a'"$mr_str"$'\033]8;;\a'
+      else
+        mr_str=$(printf "\033[38;5;%dm%s!%s%s%s" "$mr_col" "${mr_pre:+$mr_pre }" "$mr_iid" "${mr_post:+ $mr_post}" "$C_OFF")
+      fi
     fi
     stale=$(find "$mr_file" -maxdepth 0 -newermt "-$MR_TTL seconds" 2>/dev/null)
     [ -z "$stale" ] && mr_refresh "$mr_file"
