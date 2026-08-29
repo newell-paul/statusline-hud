@@ -130,7 +130,7 @@ SEGMENTS=(
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   rl7         # 7-day rate-limit bar with reset countdown
-  cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
+  # cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
   # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   # turn        # cumulative session tokens or USD (🔥)
   mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
