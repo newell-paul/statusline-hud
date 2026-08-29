@@ -19,6 +19,19 @@ fast_mode: boolean
 model.display_name: string
 model.id: string
 output_style.name: string
+prompt_cache.cache_write_tokens: number
+prompt_cache.caching_observed: boolean
+prompt_cache.expected_rebuilds: number
+prompt_cache.expires_at: number
+prompt_cache.hit_ratio: number
+prompt_cache.last_miss_at: null
+prompt_cache.miss_recache_tokens: number
+prompt_cache.misses: number
+prompt_cache.recache_tokens_if_cold: number
+prompt_cache.requests: number
+prompt_cache.ttl: string
+prompt_cache.warm: boolean
+prompt_id: string
 rate_limits.five_hour.resets_at: number
 rate_limits.five_hour.used_percentage: number
 rate_limits.seven_day.resets_at: number
@@ -30,3 +43,6 @@ transcript_path: string
 version: string
 workspace.current_dir: string
 workspace.project_dir: string
+workspace.repo.host: string
+workspace.repo.name: string
+workspace.repo.owner: string

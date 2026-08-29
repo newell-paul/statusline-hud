@@ -54,3 +54,32 @@ load helpers
   run_hud "$(make_json pc_ratio=1.5 pc_warm=true)"
   [[ "$output" == *"↩100%"* ]]
 }
+
+# --- Expiry countdown (prompt_cache.expires_at) ----------------------------
+
+@test "warm cache expiring within the warn window shows ❄Xm after the ratio" {
+  local soon=$(( $(date +%s) + 250 ))   # ~4m
+  run_hud "$(make_json pc_ratio=0.97 pc_warm=true pc_expires=$soon)"
+  [[ "$(strip_ansi "$output")" == *"↩97% ❄4m"* ]]
+}
+
+@test "warm cache with plenty of TTL left shows no countdown" {
+  local later=$(( $(date +%s) + 3000 ))  # 50m > CACHE_EXPIRY_WARN_MIN
+  run_hud "$(make_json pc_ratio=0.97 pc_warm=true pc_expires=$later)"
+  [[ "$(strip_ansi "$output")" == *"↩97%"* ]]
+  [[ "$output" != *"❄"* ]]
+}
+
+@test "cold cache keeps the ❄ glyph and never shows a countdown" {
+  local soon=$(( $(date +%s) + 250 ))
+  run_hud "$(make_json pc_ratio=0.97 pc_warm=false pc_expires=$soon)"
+  [[ "$(strip_ansi "$output")" == *"❄97%"* ]]
+  [[ "$(strip_ansi "$output")" != *"❄4m"* ]]
+}
+
+@test "expired expires_at while still warm shows no countdown" {
+  local past=$(( $(date +%s) - 10 ))
+  run_hud "$(make_json pc_ratio=0.97 pc_warm=true pc_expires=$past)"
+  [[ "$(strip_ansi "$output")" == *"↩97%"* ]]
+  [[ "$output" != *"❄"* ]]
+}

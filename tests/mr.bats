@@ -398,3 +398,53 @@ pr_json() {
   [[ "$output" != *"!23"* ]]
   rm -rf "$d"
 }
+
+# --- Native pr.* field (Claude Code ≥ 2.1.234) ----------------------------
+
+@test "native pr.number renders a badge with no CLI on PATH and no repo" {
+  PATH=/usr/bin:/bin run_hud "$(make_json pr_number=42 pr_url=https://github.com/acme/widgets/pull/42 pr_state=approved)"
+  [ "$status" -eq 0 ]
+  local plain; plain=$(strip_ansi "$output")
+  [[ "$plain" == *"🐙 #42 ✓"* ]]
+  [[ "$output" == *$'\033]8;;https://github.com/acme/widgets/pull/42\a'* ]]
+}
+
+@test "native pr.kind=mr uses the GitLab prefix" {
+  run_hud "$(make_json pr_number=23 pr_kind=mr pr_state=approved)"
+  [[ "$(strip_ansi "$output")" == *"!23 ✓"* ]]
+  [[ "$output" != *"🐙"* ]]
+}
+
+@test "native review_state maps: pending → no glyph, draft → ✎, changes_requested → ✗" {
+  run_hud "$(make_json pr_number=7 pr_state=pending)"
+  [[ "$(strip_ansi "$output")" == *"#7"* ]]
+  [[ "$(strip_ansi "$output")" != *"#7 ✓"* ]] && [[ "$(strip_ansi "$output")" != *"#7 ✗"* ]]
+  assert_color "$output" 226 "pending yellow"
+  run_hud "$(make_json pr_number=7 pr_state=draft)"
+  [[ "$(strip_ansi "$output")" == *"✎ #7"* ]]
+  run_hud "$(make_json pr_number=7 pr_state=changes_requested)"
+  [[ "$(strip_ansi "$output")" == *"#7 ✗"* ]]
+  assert_color "$output" 196 "changes requested red"
+}
+
+@test "native pr present: no MR CLI fetch is spawned, pipeline dot still fetched" {
+  fake_glab "$(mr_json opened false mergeable false)"
+  run_hud "$(make_json cwd="$REPO" pr_number=99 pr_kind=mr pr_state=approved)"
+  [[ "$(strip_ansi "$output")" == *"!99 ✓"* ]]
+  local i
+  for i in $(seq 1 30); do ls "$MR_CACHE_DIR"/*.ci >/dev/null 2>&1 && break; sleep 0.1; done
+  ls "$MR_CACHE_DIR"/*.ci >/dev/null 2>&1
+  ! ls "$MR_CACHE_DIR"/*.mr >/dev/null 2>&1
+}
+
+@test "native pr absent: CLI path still runs (merged MR shows ⇄)" {
+  fake_glab "$(mr_json merged false not_open false)"
+  render_after_refresh
+  [[ "$(strip_ansi "$output")" == *"⇄ !23"* ]]
+}
+
+@test "native pr.url with a non-http scheme is not linked" {
+  run_hud "$(make_json pr_number=5 pr_url='javascript:alert(1)' pr_state=approved)"
+  [[ "$output" != *$'\033]8;;javascript'* ]]
+  [[ "$(strip_ansi "$output")" == *"#5 ✓"* ]]
+}

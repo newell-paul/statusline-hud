@@ -126,3 +126,54 @@ EOF
   rm -rf "$d"
 }
 
+
+# --- gh/glab child git calls inherit the safe overrides ---------------------
+
+@test "core.fsmonitor does not execute via gh's own git calls in the background fetch" {
+  local d marker fake_bin
+  d=$(mktemp -d); fake_bin=$(mktemp -d)
+  marker="$d/fsmonitor-fired"
+  (
+    cd "$d"
+    git init -q
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+    git remote add origin git@github.com:acme/widgets.git
+    cat >> .git/config <<EOF2
+[core]
+	fsmonitor = touch $marker
+EOF2
+  )
+  printf '#!/usr/bin/env bash\ngit status >/dev/null 2>&1\nexit 1\n' > "$fake_bin/gh"
+  chmod +x "$fake_bin/gh"
+  MR_CACHE_DIR=$(mktemp -d)
+  PATH="$fake_bin:$PATH" run_hud "$(make_json cwd="$d")"
+  [ "$status" -eq 0 ]
+  local i
+  for i in $(seq 1 50); do
+    ls "$MR_CACHE_DIR"/*.mr >/dev/null 2>&1 && break
+    sleep 0.1
+  done
+  ls "$MR_CACHE_DIR"/*.mr >/dev/null 2>&1   # the fake gh did run
+  [ ! -e "$marker" ]
+  rm -rf "$d" "$fake_bin" "$MR_CACHE_DIR"
+}
+
+# --- MR cache directory is private -----------------------------------------
+
+@test "MR cache dir is created 0700 and an existing world-readable one is tightened" {
+  local d fake_bin mode
+  d=$(mktemp -d); fake_bin=$(mktemp -d)
+  ( cd "$d" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+    && git remote add origin git@github.com:acme/widgets.git )
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$fake_bin/gh"; chmod +x "$fake_bin/gh"
+  MR_CACHE_DIR="$d/cache"
+  PATH="$fake_bin:$PATH" run_hud "$(make_json cwd="$d")"
+  [ "$status" -eq 0 ]
+  mode=$(stat -f %Lp "$MR_CACHE_DIR" 2>/dev/null || stat -c %a "$MR_CACHE_DIR")
+  [ "$mode" = 700 ]
+  chmod 755 "$MR_CACHE_DIR"
+  PATH="$fake_bin:$PATH" run_hud "$(make_json cwd="$d")"
+  mode=$(stat -f %Lp "$MR_CACHE_DIR" 2>/dev/null || stat -c %a "$MR_CACHE_DIR")
+  [ "$mode" = 700 ]
+  rm -rf "$d" "$fake_bin"
+}
