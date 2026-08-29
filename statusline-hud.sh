@@ -136,15 +136,15 @@ NERD_FONT=0             # 1 = Nerd Font glyphs for the MR prefixes and pipeline 
 # lines, session, worktree, cache, turn. Any seg_<name>() function defined in
 # the conf file is a segment too.
 SEGMENTS=(
-  dir         # current working directory
+  # dir         # current working directory
   git         # branch name, ahead/behind, dirty marker
+  lines       # lines added / removed this session (+156 −23)
   mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
   ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model display name, effort badge, fast-mode rocket
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   rl7         # 7-day rate-limit bar with reset countdown
-  lines       # lines added / removed this session (+156 −23)
   # session     # session name (from --name, /rename, or the AI title)
   # worktree    # ⎇ worktree name when inside a linked git worktree
   # cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
@@ -173,7 +173,7 @@ if [ "$NERD_FONT" = 1 ]; then
   [ "$CI_MANUAL" = "✋" ] && CI_MANUAL=$'\033[38;5;214m\033[0m'
 fi
 if [ -n "$HUD_DEMO" ]; then
-  SEGMENTS=(dir git mr ci model ctx rl5 rl7 lines session worktree cache turn)
+  SEGMENTS=(dir git lines mr ci model ctx rl5 rl7 session worktree cache turn)
   now=$(date +%s)
   exec < <(printf '{"workspace":{"current_dir":"%s","git_worktree":"feature-xyz"},"session_name":"Wire up the statusline","model":{"display_name":"Opus 5"},"effort":{"level":"high"},"fast_mode":false,"thinking":{"enabled":true},"context_window":{"used_percentage":47,"total_input_tokens":94000,"current_usage":{"cache_read_input_tokens":88000}},"cost":{"total_cost_usd":5.64,"total_duration_ms":5400000,"total_lines_added":156,"total_lines_removed":23},"rate_limits":{"five_hour":{"used_percentage":76,"resets_at":%d},"seven_day":{"used_percentage":31,"resets_at":%d}},"prompt_cache":{"hit_ratio":0.94,"warm":true,"expires_at":%d},"pr":{"number":42,"url":"https://github.com/acme/widgets/pull/42","review_state":"approved"}}' "$PWD" $((now+8040)) $((now+250000)) $((now+250)))
 fi

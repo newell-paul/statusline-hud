@@ -37,7 +37,7 @@ If a backup was made from a pre-plugin install, show `diff <(sed -n '/─── 
 [ -f ~/.claude/statusline-hud.conf ] || cat > ~/.claude/statusline-hud.conf <<'EOC'
 # statusline-hud overrides — sourced after the CONFIG block in
 # ~/.claude/statusline-hud.sh. Any assignment from that block works here.
-# SEGMENTS=(dir git mr ci model ctx rl5 rl7 lines)
+# SEGMENTS=(git lines mr ci model ctx rl5 rl7)
 # NERD_FONT=1
 # TURN_UNIT=tokens
 EOC
@@ -92,7 +92,7 @@ Append the assignment to the conf file with its new value. Common requests:
 
 | Request | Assignment |
 |---|---|
-| hide / reorder segments | `SEGMENTS=(dir git mr ci model ctx rl5 rl7 lines session worktree cache turn)` — omit names to hide |
+| hide / reorder segments | `SEGMENTS=(dir git lines mr ci model ctx rl5 rl7 session worktree cache turn)` — omit names to hide |
 | show the 🔥 spend | add `turn` to `SEGMENTS`; `TURN_UNIT=usd` or `tokens`; `TURN_RATE=0` drops the `($/h)` burn rate |
 | show the cache ratio | add `cache` to `SEGMENTS` |
 | session name / worktree | add `session` and/or `worktree` to `SEGMENTS` |

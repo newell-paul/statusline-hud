@@ -4,15 +4,14 @@ type: blog
 updated: 2026-08-29
 ---
 
-# Claude Code Has a Head-Up Display. You Just Have to Wire It Up
+# Claude Code, Without Leaving the Terminal
 
-*One bash script. Branch, merge request, pipeline, context and both rate limits on one line. Stop tabbing away to check things your terminal already knows.*
+*Version 2 of my take on the statusline *
 
-![Statusline HUD with the default segments](images/statusline-hud.png)
 
-I kept losing focus. Over to GitLab to see if the MR had gone green. Over to the pipeline page. Into `/usage` to see how much of the five-hour window I had eaten up. Each one a small interruption and each one is a chance to lose where I was at.
+I kept losing focus. Over to GitLab to see MR status. Over to the pipeline page. Into `/usage` to see how much of the five-hour window I had eaten up. Each one a small interruption and each one is a chance to lose where I was at.
 
-Claude Code does surface some of this info. But I tended to dismiss them without reading.
+Claude Code does surface some of this info. But it is easy to dismiss them without reading.
 ---
 
 **TL;DR**
@@ -23,7 +22,7 @@ Claude Code does surface some of this info. But I tended to dismiss them without
 /statusline-hud
 ```
 
-`bash statusline-hud.sh --demo` shows you the whole thing before you wire anything. Manual install and every setting are in the **[README](https://github.com/newell-paul/statusline-hud)**.
+`bash statusline-hud.sh --demo` shows you the whole thing before you wire anything.
 
 ---
 
@@ -37,11 +36,13 @@ There's just nothing showing it.
 
 ## What the Bar Shows
 
+![The default bar: git branch, GitLab MR !23 mergeable, a green pipeline dot, Sonnet 5 at high effort with thinking on, and the context, 5h and 7d bars](images/statusline-hud.png)
+
 The left half is where you are. The right half is what it's costing you. But you can have it in any order you want and comment out what you do not need in the `segments` array - more on that later
 
 **Where you are**
 
-- Directory and git: branch, `↑N↓N` ahead/behind, `✗` if dirty
+- Git: branch, `↑N↓N` ahead/behind, `✗` if dirty, then `+156 −23` lines changed this session
 - MR/PR badge: `🦊 !23 ✓` or `🐙 #42 ✓`. Green tick when it's mergeable, red cross for conflicts, bare yellow while checks run, `✎` draft, `⇄` merged. Click it and the MR opens
 - Pipeline dot: 🟢 🔴 🟡 for the latest run on your branch. ⚪ if that run is for an older commit than your HEAD, so you never trust a green that isn't about your code
 
@@ -50,9 +51,8 @@ The left half is where you are. The right half is what it's costing you. But you
 - Model, coloured by tier, with the effort badge (`⚡Lo` through `⚡Max`), 🚀 for `/fast`, 💭 for extended thinking
 - Context-window bar
 - 5-hour and 7-day rate-limit bars, with a reset countdown (`↺2h14m`) on whichever is more constrained once it passes 60%
-- Lines changed this session: `+156 −23`
 
-The bars are five cells drawn in eighths, so they visibly move within a tier. Context flips colour earlier than the rate limits on purpose: a full context degrades Claude's answers long before it blocks you. A rate limit only bites at 100%.
+The bars are five cells drawn in eighths, so they visibly move within a tier. Context flips colour earlier than the rate limits on purpose: a full context degrades Claude's answers long before it blocks you. 
 
 **Off by default, one line to turn on**
 
@@ -60,26 +60,26 @@ The bars are five cells drawn in eighths, so they visibly move within a tier. Co
 - Session name and `⎇ worktree`, for when you run several sessions or a subagent wanders off
 - The flame: `🔥 $5.64 ($3.20/h)`. More on that below
 
-## Why Not claude-hud or ccstatusline?
+## Why not use claude-hud or ccstatusline instead?
 
-I wrote the first version of this before I found out about the others. Both are good, and both have more stars than this will ever get. If you want to see which tools and subagents are running right now, claude-hud does that and I don't. If you want powerline arrows, gradients and a TUI to configure it, ccstatusline does that and I don't.
+I wrote the first version of this before I found out about other solutions. Both are good, and both have more GitHub stars than this will ever get. If you want to see which tools and subagents are running right now, claude-hud does that and I don't. If you want powerline arrows, gradients and a TUI to configure it, ccstatusline does that and I don't.
 
-Here's what I wanted instead, and why I kept iterating on tnhis one instead of adopting one of the others.
+Here's what I wanted instead, and why I kept iterating on this one instead of adopting one of the others.
 
-**One line.** Both of them default to more. claude-hud opens on two rows and grows; ccstatusline's showcase is a multi-row powerline. I hate a busy status. The bar sits under every prompt I type for the whole session, and if it needs a second row it has stopped being a status and become a dashboard. Everything in this HUD had to earn its place on one line, and the cut list is longer than the segment list.
+**One line.** Both of them default to more. claude-hud opens on two rows and grows; ccstatusline's showcase is a multi-row powerline. I hate a busy status. The bar sits under every prompt I type for the whole session, and if it needs a second row it has stopped being a status and become a dashboard. Everything in this HUD had to earn its place on one line.
 
-**Forge links.** Neither shows your pipeline. claude-hud shows no PR at all; ccstatusline has a GitHub-only check count. This one shows the MR or PR state and the latest pipeline for GitLab and GitHub, and both are Cmd-clickable. That's the whole "stop alt-tabbing" argument, and it's the half of the bar the others don't have.
+**Forge links.** Neither shows your pipeline. claude-hud shows no PR at all; ccstatusline has a GitHub-only check count. This one shows the MR or PR state and the latest pipeline for GitLab and GitHub, and both are clickable so you go straight to the page.
 
 **Footprint.** One 30 KB bash script.  No Node, no Bun, no `npx` cold start on every render, no call home to a usage API. It runs the same on a locked-down server, a colleague's laptop and a container. About 60ms a render.
 
-The plugin install does what you'd expect: symlinks the script into `~/.claude/`, writes a starter conf, patches `settings.json`, and re-points itself after `/plugin update`. Add `"refreshInterval": 30` while you're there so the git and MR segments don't go stale while the session idles.
+The plugin install symlinks the script into `~/.claude/`, writes a starter conf, patches `settings.json`, and re-points itself after `/plugin update`. Add `"refreshInterval": 30` while you're there so the git and MR segments don't go stale while the session idles.
 
 ## The Whole Extension API
 
 Every setting is a plain bash assignment in the `CONFIG` block, and the conf file overrides any of them. `SEGMENTS` is the control panel:
 
 ```bash
-SEGMENTS=(dir git mr ci model ctx rl5 rl7 lines cache turn)   # everything on
+SEGMENTS=(dir git lines mr ci model ctx rl5 rl7 cache turn)   # everything on
 SEGMENTS=(git model ctx rl5)                                  # minimal
 ```
 
@@ -95,6 +95,7 @@ But a dollar figure does something a percentage doesn't. You tend to notice when
 
 ## Acting on What You See
 
+- When the context bar goes amber start thinking about /compact unless you have compact set to auto.
 - When the 5h bar goes amber, ask whether this task still needs Fable or Opus.
 - Pin routine slash commands to `model: haiku`. Commit, lint, review-diff. None of these need Opus.
 - Use subagents for delegation. They get a fresh context window, not your full history.

@@ -1,17 +1,18 @@
 # statusline-hud
 
-![statusline-hud hero](blog/images/speedo.png)
+![statusline-hud v2 — Claude Code, without leaving the terminal](blog/images/banner.png)
 
 A power meter for Claude Code. One bash script. Renders git state, MR/PR and pipeline status, model + effort, context window, rate limits, and lines changed into a single status line — with cache hit ratio and session spend a one-line config change away.
 
-![statusline-hud screenshot](blog/images/statusline-hud.png)
+![statusline-hud: git branch, GitLab MR !23 mergeable, passing pipeline, Sonnet 5 at high effort with thinking on, context / 5h / 7d bars](blog/images/statusline-hud.png)
 
 ## What it shows
 
 Left to right (segments marked *off* are in the script but disabled in the default `SEGMENTS`):
 
-- **Directory** — last two path segments (with `$HOME` shown as `~`)
+- **Directory** (*off*) — last two path segments (with `$HOME` shown as `~`)
 - **Git** — branch, `↑N↓N` ahead/behind, `✗` if dirty
+- **Lines changed** `+156 −23` — this session's edits, from `cost.total_lines_*`; hidden while both are zero
 - **Model** — display name (Opus `(1M context)` collapses to `(1M)`)
 - **Effort badge** — `⚡Lo` / `⚡Med` / `⚡Hi` / `⚡xHi` / `⚡Max`, only on models that expose the knob
 - **Fast-mode rocket** 🚀 when `/fast` is active; **💭** when extended thinking is on
@@ -19,7 +20,6 @@ Left to right (segments marked *off* are in the script but disabled in the defau
 - **5-hour rate-limit bar** — your burst quota; green → yellow (≥60%) → orange (≥80%) → red (≥95%)
 - **7-day rate-limit bar** — the limit that actually locks you out for the week; same colour tiers as 5h
 - **Reset countdown** `↺2h14m` — only shown when a rate-limit bar climbs above 60%
-- **Lines changed** `+156 −23` — this session's edits, from `cost.total_lines_*`; hidden while both are zero
 - **Session name** (*off*) — from `--name`, `/rename`, or the AI-generated title; truncated at `SESSION_MAX` (24)
 - **Worktree** (*off*) `⎇ my-feature` — only inside a linked git worktree, so you know a subagent moved you
 - **Cache hit ratio** (*off*) `↩97%` — from `prompt_cache.hit_ratio` (Claude Code ≥ 2.1.251, session-wide); green ≥60%, amber 30–59%, red below. Flips to cyan `❄97%` when the cached prefix has gone cold — the next turn re-caches everything. While still warm, `↩97% ❄4m` appears once fewer than `CACHE_EXPIRY_WARN_MIN` (10) minutes of TTL remain: send a message before then and the prefix stays cached instead of being rewritten (`recache_tokens_if_cold` tokens — tens of thousands on a long session). Older versions fall back to per-turn maths, shown only when input tokens > 5k
@@ -79,15 +79,15 @@ The `SEGMENTS` array in the CONFIG block controls what shows and in what order (
 
 ```bash
 SEGMENTS=(
-  dir         # current working directory
+  # dir         # current working directory
   git         # branch name, ahead/behind, dirty marker
+  lines       # lines added / removed this session (+156 −23)
   mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
   ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model name + effort badge
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   rl7         # 7-day rate-limit bar with reset countdown
-  lines       # lines added / removed this session (+156 −23)
   # session     # session name (from --name, /rename, or the AI title)
   # worktree    # ⎇ worktree name when inside a linked git worktree
   # cache       # session-wide cache-hit ratio (❄ when cold)
