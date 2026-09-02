@@ -7,10 +7,10 @@ set -u
 src="${CLAUDE_PLUGIN_ROOT:-}/statusline-hud.sh"
 dst="$HOME/.claude/statusline-hud.sh"
 [ -f "$src" ] || exit 0
-if [ -L "$dst" ]; then
-  [ "$(readlink "$dst")" = "$src" ] || ln -sfn "$src" "$dst"
-  exit 0
-fi
+for name in statusline-hud.sh subagent-statusline.sh; do
+  link="$HOME/.claude/$name"
+  [ -L "$link" ] && [ "$(readlink "$link")" != "${CLAUDE_PLUGIN_ROOT:-}/$name" ] && ln -sfn "${CLAUDE_PLUGIN_ROOT:-}/$name" "$link"
+done
 [ -e "$dst" ] && exit 0
 grep -qs statusline-hud "$HOME/.claude/settings.json" && exit 0
 data="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/statusline-hud}"

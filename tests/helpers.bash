@@ -97,7 +97,7 @@ make_json() {
   local pc_warm=""
   local pr_number="" pr_url="" pr_state="" pr_kind=""
   local thinking="" lines_add="" lines_del="" pc_expires=""
-  local dur="" session="" worktree=""
+  local dur="" session="" worktree="" repo_host="" session_id=""
 
   for kv in "$@"; do
     local k="${kv%%=*}" v="${kv#*=}"
@@ -127,6 +127,8 @@ make_json() {
       dur) dur="$v" ;;
       session) session="$v" ;;
       worktree) worktree="$v" ;;
+      repo_host) repo_host="$v" ;;
+      session_id) session_id="$v" ;;
     esac
   done
 
@@ -142,7 +144,9 @@ make_json() {
   [ -n "$dur" ] && lines_json+=", \"total_duration_ms\": $dur"
   local extra_json=""
   [ -n "$session" ] && extra_json+=",\"session_name\": \"$session\""
+  [ -n "$session_id" ] && extra_json+=",\"session_id\": \"$session_id\""
   [ -n "$worktree" ] && extra_json+=",\"worktree\": {\"name\": \"$worktree\"}"
+  [ -n "$repo_host" ] && extra_json+=",\"workspace\": {\"current_dir\": \"$cwd\", \"repo\": {\"host\": \"$repo_host\"}}"
 
   local pr_json=""
   if [ -n "$pr_number" ]; then

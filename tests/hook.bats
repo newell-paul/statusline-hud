@@ -34,6 +34,16 @@ teardown() { rm -rf "$HOME"; }
   [ "$(readlink "$HOME/.claude/statusline-hud.sh")" = "$CLAUDE_PLUGIN_ROOT/statusline-hud.sh" ]
 }
 
+@test "re-points the subagent symlink too, and leaves a missing one alone" {
+  ln -s /old/cache/statusline-hud.sh "$HOME/.claude/statusline-hud.sh"
+  ln -s /old/cache/subagent-statusline.sh "$HOME/.claude/subagent-statusline.sh"
+  run bash "$HOOK"
+  [ "$(readlink "$HOME/.claude/subagent-statusline.sh")" = "$CLAUDE_PLUGIN_ROOT/subagent-statusline.sh" ]
+  rm "$HOME/.claude/subagent-statusline.sh"
+  run bash "$HOOK"
+  [ ! -e "$HOME/.claude/subagent-statusline.sh" ]
+}
+
 @test "leaves a hand-installed regular file alone" {
   echo 'mine' > "$HOME/.claude/statusline-hud.sh"
   run bash "$HOOK"

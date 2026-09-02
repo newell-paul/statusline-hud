@@ -5,7 +5,7 @@ load helpers
   HUD_ARGS=--demo run_hud ''
   [ "$status" -eq 0 ]
   local plain; plain=$(strip_ansi "$output")
-  for want in "🐙 #42 ✓" "🟢" "Opus 5" "⚡Hi" "💭" "ctx:" "5h:" "↺" "7d:" "+156 −23" "Wire up the statusline" "⎇ feature-xyz" "↩94%" "❄4m" '🔥 $5.64' "/h)"; do
+  for want in "🐙 #42 ✓" "🟢" "Opus 5" "⚡Hi" "💭" "🤖 ×2" "ctx:" "5h:" "↺" "7d:" "+156 −23" "Wire up the statusline" "⎇ feature-xyz" "↩94%" "❄4m" '🔥 $5.64' "/h)"; do
     [[ "$plain" == *"$want"* ]] || { echo "missing: $want"; echo "$plain"; return 1; }
   done
   [[ "$plain" != *$'\n'* ]]

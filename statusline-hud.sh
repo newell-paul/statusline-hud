@@ -6,8 +6,8 @@
 # statusline-hud.sh — Claude Code statusline.
 # Reads one JSON payload from stdin, prints one ANSI-coloured status line.
 # Segments: cwd, git, MR/PR badge, pipeline dot, model + effort/fast/thinking
-# badges, ctx/5h/7d power bars, lines changed, prompt-cache hit ratio, and a
-# 🔥 session spend (or input-token) gauge. Choose and order them with SEGMENTS
+# badges, running-subagent count, ctx/5h/7d power bars, lines changed,
+# prompt-cache hit ratio, and a 🔥 session spend (or input-token) gauge. Choose and order them with SEGMENTS
 # in the CONFIG block below, or override in ~/.claude/statusline-hud.conf.
 set -u
 command -v jq >/dev/null || { printf "\033[38;5;196m⚠ jq missing\033[0m"; exit 1; }
@@ -55,6 +55,8 @@ C_EFFORT_XHIGH=208
 C_EFFORT_MAX=196
 C_FAST=226              # 🚀 fast-mode indicator
 C_THINK=141             # 💭 extended-thinking indicator
+C_AGENTS=141            # 🤖 ×N running subagents (agents segment)
+AGENTS_TTL=15           # seconds before the count written by subagent-statusline.sh is stale
 C_SESSION=245           # session name (session segment)
 C_WORKTREE=176          # ⎇ worktree name (worktree segment)
 SESSION_MAX=24          # session name truncated to this many characters
@@ -132,8 +134,8 @@ MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 no
 NERD_FONT=0             # 1 = Nerd Font glyphs for the MR prefixes and pipeline dot instead of emoji
 
 # Which segments render, in left-to-right order. Comment a line to disable;
-# move lines to reorder. Recognised: dir, git, mr, ci, model, ctx, rl5, rl7,
-# lines, session, worktree, cache, turn. Any seg_<name>() function defined in
+# move lines to reorder. Recognised: dir, git, mr, ci, model, agents, ctx,
+# rl5, rl7, lines, session, worktree, cache, turn. Any seg_<name>() function defined in
 # the conf file is a segment too.
 SEGMENTS=(
   # dir         # current working directory
@@ -142,13 +144,13 @@ SEGMENTS=(
   mr          # GitLab MR / GitHub PR badge for the current branch (glab / gh)
   ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model display name, effort badge, fast-mode rocket
+  # agents      # 🤖 ×N subagents running (needs subagent-statusline.sh wired in)
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   rl7         # 7-day rate-limit bar with reset countdown
   # session     # session name (from --name, /rename, or the AI title)
   # worktree    # ⎇ worktree name when inside a linked git worktree
   # cache       # session-wide cache-hit ratio (❄ when the prompt cache is cold)
-  # opcode      # opcode-lite verdict — disabled, no longer shown in statusline
   # turn        # cumulative session tokens or USD (🔥)
 )
 
@@ -173,7 +175,7 @@ if [ "$NERD_FONT" = 1 ]; then
   [ "$CI_MANUAL" = "✋" ] && CI_MANUAL=$'\033[38;5;214m\033[0m'
 fi
 if [ -n "$HUD_DEMO" ]; then
-  SEGMENTS=(dir git lines mr ci model ctx rl5 rl7 session worktree cache turn)
+  SEGMENTS=(dir git lines mr ci model agents ctx rl5 rl7 session worktree cache turn)
   now=$(date +%s)
   exec < <(printf '{"workspace":{"current_dir":"%s","git_worktree":"feature-xyz"},"session_name":"Wire up the statusline","model":{"display_name":"Opus 5"},"effort":{"level":"high"},"fast_mode":false,"thinking":{"enabled":true},"context_window":{"used_percentage":47,"total_input_tokens":94000,"current_usage":{"cache_read_input_tokens":88000}},"cost":{"total_cost_usd":5.64,"total_duration_ms":5400000,"total_lines_added":156,"total_lines_removed":23},"rate_limits":{"five_hour":{"used_percentage":76,"resets_at":%d},"seven_day":{"used_percentage":31,"resets_at":%d}},"prompt_cache":{"hit_ratio":0.94,"warm":true,"expires_at":%d},"pr":{"number":42,"url":"https://github.com/acme/widgets/pull/42","review_state":"approved"}}' "$PWD" $((now+8040)) $((now+250000)) $((now+250)))
 fi
@@ -195,7 +197,8 @@ RESET_FG=$'\033[38;5;'"$C_RESET_TXT"'m'
 #   pr.number, pr.url, pr.review_state, pr.kind,
 #   thinking.enabled, cost.total_lines_added, cost.total_lines_removed,
 #   prompt_cache.expires_at (epoch), cost.total_duration_ms,
-#   session_name, workspace.git_worktree (fallback worktree.name)
+#   session_name, workspace.git_worktree (fallback worktree.name),
+#   workspace.repo.host, session_id
 # Optional fields emit "-" rather than "" so `read` (tab is whitespace IFS,
 # consecutive tabs collapse) keeps every column in place.
 tsv=$(jq -r '[
@@ -223,13 +226,15 @@ tsv=$(jq -r '[
   (.prompt_cache.expires_at | if type == "number" then (floor|tostring) else "-" end),
   ((.cost.total_duration_ms // 0) | tonumber? // 0 | floor),
   (.session_name // "-"),
-  (.workspace.git_worktree // .worktree.name // "-")
+  (.workspace.git_worktree // .worktree.name // "-"),
+  (.workspace.repo.host // "-"),
+  (.session_id // "-")
 ] | @tsv' 2>/dev/null) || { printf "\033[38;5;240m(parse failed)\033[0m"; exit 0; }
 [ -z "$tsv" ] && { printf "\033[38;5;240m(parse failed)\033[0m"; exit 0; }
 
 # The 'x' prefix is a sentinel that stops `read` from collapsing a leading
 # empty cwd field; it's stripped immediately below.
-IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input pc_ratio pc_warm pr_number pr_url pr_state pr_kind thinking lines_add lines_del pc_expires dur_ms session_name worktree < <(printf 'x%s\n' "$tsv")
+IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input pc_ratio pc_warm pr_number pr_url pr_state pr_kind thinking lines_add lines_del pc_expires dur_ms session_name worktree repo_host session_id < <(printf 'x%s\n' "$tsv")
 cwd="${cwd#x}"
 used=${used:-0} rl5=${rl5:-0} cost=${cost:-0} effort=${effort:-} fast=${fast:-false}
 rl7=${rl7:-0} rl5_reset=${rl5_reset:-0} rl7_reset=${rl7_reset:-0} cache_read=${cache_read:-0} total_input=${total_input:-0}
@@ -243,6 +248,8 @@ rl7=${rl7:-0} rl5_reset=${rl5_reset:-0} rl7_reset=${rl7_reset:-0} cache_read=${c
 thinking=${thinking:-false} lines_add=${lines_add:-0} lines_del=${lines_del:-0} dur_ms=${dur_ms:-0}
 [ "$session_name" = "-" ] && session_name=""
 [ "$worktree" = "-" ] && worktree=""
+[ "$repo_host" = "-" ] && repo_host=""
+session_id="${session_id//[^A-Za-z0-9._-]/}"
 [ "$effort" = "-" ] && effort=""
 
 # Strip control bytes from any field that will be emitted to the terminal or
@@ -371,6 +378,19 @@ else
              printf "%.2f %d%s\n", v, (v>=hi?chi:v>=med?cmed:clo), r}')
   turn=$(printf "  \033[%dm🔥 \$%s%s%s" "$col" "$amount" "${rate:+ $rate}" "$C_OFF")
 fi
+
+# ─── Running subagents ──────────────────────────────────────────────────────
+# The status line payload carries no task data. subagent-statusline.sh (the
+# `subagentStatusLine` command) writes the running count per session into the
+# cache dir on every panel refresh; stale files are ignored so the count
+# clears once the agents finish.
+agents_n=0
+if [ -n "$session_id" ] && [ -O "$MR_CACHE_DIR" ]; then
+  f="$MR_CACHE_DIR/agents-$session_id"
+  [ -n "$(find "$f" -maxdepth 0 -newermt "-$AGENTS_TTL seconds" 2>/dev/null)" ] && read -r agents_n < "$f"
+  [[ "$agents_n" =~ ^[0-9]+$ ]] || agents_n=0
+fi
+[ -n "$HUD_DEMO" ] && agents_n=2
 
 # ─── Power-bar renderer ─────────────────────────────────────────────────────
 # bar() — render a 5-cell sub-stepped power bar in one tier colour.
@@ -588,9 +608,12 @@ if [ -n "$branch" ]; then
   # Remote to classify: origin, else the branch's upstream remote, else the
   # first remote listed. Repos that name their only remote `gitlab` or
   # `github` are common enough to matter.
-  # One `git config` call yields every remote URL and the branch's upstream.
+  # Claude Code already parsed origin into workspace.repo.host; only fall
+  # back to one `git config` call (every remote URL plus the branch's
+  # upstream) when the payload lacks it.
   origin="" first_url="" upstream="" upstream_url=""
-  while IFS=' ' read -r k v; do
+  [ -n "$repo_host" ] && origin="https://$repo_host/"
+  [ -z "$origin" ] && while IFS=' ' read -r k v; do
     case "$k" in
       remote.origin.url) origin="$v" ;;
       remote.*.url)      [ -z "$first_url" ] && first_url="$v"
@@ -670,6 +693,7 @@ fi
 seg_dir()   { printf "\033[38;5;%dm%s%s" "$C_DIR" "$dir" "$C_OFF"; }
 seg_git()   { printf "%s" "$git_part"; }
 seg_model() { printf "\033[38;5;%dm%s%s%s" "$model_color" "$model" "$C_OFF" "$badge"; }
+seg_agents() { (( agents_n > 0 )) && printf "\033[38;5;%dm🤖 ×%d%s" "$C_AGENTS" "$agents_n" "$C_OFF"; return 0; }
 seg_ctx()   { printf "ctx:%s%s%s%s%s" "$BG_BAR" "$ctx_fill" "$EMPTY_FG" "$ctx_empty" "$C_OFF"; }
 seg_rl5()   {
   printf "5h:%s%s%s%s%s" "$BG_BAR" "$rl5_fill" "$EMPTY_FG" "$rl5_empty" "$C_OFF"
@@ -695,20 +719,6 @@ seg_worktree() { [ -n "$worktree" ] && printf "\033[38;5;%dm⎇ %s%s" "$C_WORKTR
 seg_mr()    { printf "%s" "$mr_str"; }
 seg_ci()    { printf "%s" "$ci_str"; }
 seg_turn()  { printf "%s" "$turn"; }
-# opcode-lite verdict: reads <cwd>/.opcode-status (one line: "<glyph> <OP> <note>").
-# Empty/absent → empty segment → skipped, so it only shows in opcode-lite projects.
-seg_opcode() {
-  local f="$cwd/.opcode-status" line="" color
-  [ -r "$f" ] || return 0
-  { IFS= read -r line || [ -n "$line" ]; } < "$f"
-  [ -z "$line" ] && return 0
-  case "$line" in
-    "✗"*) color=196 ;;   # fail → red
-    "✓"*) color=46  ;;   # pass → green
-    *)    color=214 ;;   # other → amber
-  esac
-  printf "opcode \033[38;5;%dm%s%s" "$color" "$line" "$C_OFF"
-}
 
 # ─── Compose final line ─────────────────────────────────────────────────────
 # Walk SEGMENTS in order. Empty segments are skipped entirely (so the

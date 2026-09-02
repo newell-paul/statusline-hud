@@ -351,6 +351,27 @@ pr_json() {
   [[ "$output" == *$'\033[38;5;46m✓'* ]]
 }
 
+# workspace.repo.host (parsed from origin by Claude Code) skips the git config
+# lookup entirely, so a payload that carries it wins over what git says.
+@test "workspace.repo.host in the payload picks the CLI without reading git remotes" {
+  fake_gh "$(pr_json OPEN false MERGEABLE CLEAN)"
+  run_hud "$(make_json cwd="$REPO" repo_host=github.com)"
+  local i
+  for i in $(seq 1 50); do ls "$MR_CACHE_DIR"/*.mr >/dev/null 2>&1 && break; sleep 0.1; done
+  run_hud "$(make_json cwd="$REPO" repo_host=github.com)"
+  [[ "$output" == *"#42"* ]]
+}
+
+@test "workspace.repo.host gitlab.com uses glab even with a github origin" {
+  ( cd "$REPO" && git remote set-url origin https://github.com/acme/widgets.git )
+  fake_glab "$(mr_json opened false mergeable false)"
+  run_hud "$(make_json cwd="$REPO" repo_host=gitlab.com)"
+  local i
+  for i in $(seq 1 50); do ls "$MR_CACHE_DIR"/*.mr >/dev/null 2>&1 && break; sleep 0.1; done
+  run_hud "$(make_json cwd="$REPO" repo_host=gitlab.com)"
+  [[ "$output" == *"!23 ✓"* ]]
+}
+
 # --- Remote discovery ---------------------------------------------------------
 # Not every repo calls its remote `origin`. Fall back to the branch's upstream
 # remote, then the first remote listed.

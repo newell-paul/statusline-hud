@@ -70,3 +70,34 @@ load helpers
   [[ "$(strip_ansi "$output")" == "hi there · Opus 4.7"* ]]
   rm -f "$HUD_CONF"
 }
+
+# --- agents segment ---------------------------------------------------------
+# subagent-statusline.sh writes the running count to $MR_CACHE_DIR/agents-<session_id>;
+# the segment shows 🤖 ×N while that file is fresh. Off by default: the panel
+# rows under the prompt already show each agent.
+
+@test "agents segment shows 🤖 ×N from a fresh count file" {
+  MR_CACHE_DIR=$(mktemp -d); chmod 700 "$MR_CACHE_DIR"
+  HUD_CONF=$(mktemp); echo 'SEGMENTS=(model agents ctx)' > "$HUD_CONF"
+  echo 2 > "$MR_CACHE_DIR/agents-sess-1"
+  run_hud "$(make_json session_id=sess-1)"
+  [[ "$output" == *$'\033[38;5;141m🤖 ×2'* ]]
+  rm -rf "$MR_CACHE_DIR" "$HUD_CONF"
+}
+
+@test "agents segment hides on zero, a stale file, garbage, or no session id" {
+  MR_CACHE_DIR=$(mktemp -d); chmod 700 "$MR_CACHE_DIR"
+  echo 0 > "$MR_CACHE_DIR/agents-sess-1"
+  run_hud "$(make_json session_id=sess-1)"
+  [[ "$output" != *"🤖"* ]]
+  echo 3 > "$MR_CACHE_DIR/agents-sess-1"; touch -t 202001010000 "$MR_CACHE_DIR/agents-sess-1"
+  run_hud "$(make_json session_id=sess-1)"
+  [[ "$output" != *"🤖"* ]]
+  echo 'x; rm -rf /' > "$MR_CACHE_DIR/agents-sess-1"
+  run_hud "$(make_json session_id=sess-1)"
+  [[ "$output" != *"🤖"* ]]
+  echo 2 > "$MR_CACHE_DIR/agents-sess-1"
+  run_hud "$(make_json)"
+  [[ "$output" != *"🤖"* ]]
+  rm -rf "$MR_CACHE_DIR"
+}

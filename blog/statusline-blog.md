@@ -1,7 +1,7 @@
 ---
 status: draft
 type: blog
-updated: 2026-08-29
+updated: 2026-09-02
 ---
 
 # Claude Code, Without Leaving the Terminal
@@ -9,7 +9,7 @@ updated: 2026-08-29
 *Version 2 of my take on the statusline *
 
 
-I kept losing focus. Over to GitLab to see MR status. Over to the pipeline page. Into `/usage` to see how much of the five-hour window I had eaten up. Each one a small interruption and each one is a chance to lose where I was at.
+Over to GitLab to see MR status. Over to the pipeline page. Into `/usage` to see how much of the five-hour window I had eaten up. Each one a small interruption and each one is a chance to lose what I was working on in Claude Code terminal.
 
 Claude Code does surface some of this info. But it is easy to dismiss them without reading.
 ---
@@ -49,6 +49,7 @@ The left half is where you are. The right half is what it's costing you. But you
 **What it's costing you**
 
 - Model, coloured by tier, with the effort badge (`⚡Lo` through `⚡Max`), 🚀 for `/fast`, 💭 for extended thinking
+- The rows Claude Code draws under the prompt while subagents run get the same treatment: `🤖 Explore ⚡Hi ctx:█▏░░░ 12k 0:42 · find remote tests`. Effort badge, their own context bar, tokens, elapsed time, one row per agent. That's a second, tiny script wired in as `subagentStatusLine`
 - Context-window bar
 - 5-hour and 7-day rate-limit bars, with a reset countdown (`↺2h14m`) on whichever is more constrained once it passes 60%
 
@@ -58,11 +59,12 @@ The bars are five cells drawn in eighths, so they visibly move within a tier. Co
 
 - Cache hit ratio `↩97%`. Cyan `❄` when the cached prefix has gone cold; `❄4m` while it's warm but about to lapse. Send a message before then and Claude Code reuses the prefix instead of rewriting it, which on a long session is tens of thousands of tokens
 - Session name and `⎇ worktree`, for when you run several sessions or a subagent wanders off
+- `🤖 ×2`, a running-subagent count on the main line. I turned it off once the agent rows existed: the panel already tells you who's running, and a count above it said nothing new
 - The flame: `🔥 $5.64 ($3.20/h)`. More on that below
 
 ## Why not use claude-hud or ccstatusline instead?
 
-I wrote the first version of this before I found out about other solutions. Both are good, and both have more GitHub stars than this will ever get. If you want to see which tools and subagents are running right now, claude-hud does that and I don't. If you want powerline arrows, gradients and a TUI to configure it, ccstatusline does that and I don't.
+I wrote the first version of this before I found out about other solutions. Both are good, and both have more GitHub stars than this will ever get. If you want to see which tools are running right now, claude-hud does that and I don't. If you want powerline arrows, gradients and a TUI to configure it, ccstatusline does that and I don't.
 
 Here's what I wanted instead, and why I kept iterating on this one instead of adopting one of the others.
 
@@ -79,8 +81,8 @@ The plugin install symlinks the script into `~/.claude/`, writes a starter conf,
 Every setting is a plain bash assignment in the `CONFIG` block, and the conf file overrides any of them. `SEGMENTS` is the control panel:
 
 ```bash
-SEGMENTS=(dir git lines mr ci model ctx rl5 rl7 cache turn)   # everything on
-SEGMENTS=(git model ctx rl5)                                  # minimal
+SEGMENTS=(dir git lines mr ci model agents ctx rl5 rl7 session worktree cache turn)   # everything on
+SEGMENTS=(git model ctx rl5)                                                          # minimal
 ```
 
 That's it. A function and a name in a list. No runtime, no plugin API, no rebuild.
@@ -98,7 +100,7 @@ But a dollar figure does something a percentage doesn't. You tend to notice when
 - When the context bar goes amber start thinking about /compact unless you have compact set to auto.
 - When the 5h bar goes amber, ask whether this task still needs Fable or Opus.
 - Pin routine slash commands to `model: haiku`. Commit, lint, review-diff. None of these need Opus.
-- Use subagents for delegation. They get a fresh context window, not your full history.
+- Use subagents for delegation. They get a fresh context window, not your full history, and their row under the prompt shows how much of it they've used.
 - When the `❄` countdown appears, send the next message rather than going for a coffee.
 - When a session has done its job, `/clear` before the next task. `/compact` if you want to keep the thread.
 
