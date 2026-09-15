@@ -169,11 +169,11 @@ EOF2
   MR_CACHE_DIR="$d/cache"
   PATH="$fake_bin:$PATH" run_hud "$(make_json cwd="$d")"
   [ "$status" -eq 0 ]
-  mode=$(stat -f %Lp "$MR_CACHE_DIR" 2>/dev/null || stat -c %a "$MR_CACHE_DIR")
+  mode=$(stat -c %a "$MR_CACHE_DIR" 2>/dev/null || stat -f %Lp "$MR_CACHE_DIR")
   [ "$mode" = 700 ]
   chmod 755 "$MR_CACHE_DIR"
   PATH="$fake_bin:$PATH" run_hud "$(make_json cwd="$d")"
-  mode=$(stat -f %Lp "$MR_CACHE_DIR" 2>/dev/null || stat -c %a "$MR_CACHE_DIR")
+  mode=$(stat -c %a "$MR_CACHE_DIR" 2>/dev/null || stat -f %Lp "$MR_CACHE_DIR")
   [ "$mode" = 700 ]
   rm -rf "$d" "$fake_bin"
 }

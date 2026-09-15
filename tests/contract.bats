@@ -67,8 +67,8 @@ schema_of() {
 @test "fixture renders without error through the statusline script" {
   run_hud "$(cat "$FIXTURE")"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Opus 4.7"* ]]
-  [[ "$output" == *"⚡Med"* ]]
+  [[ "$output" == *"Opus 5"* ]]
+  [[ "$output" == *"⚡Hi"* ]]
   [[ "$output" == *"ctx:"* ]]
   [[ "$output" == *"5h:"* ]]
 }
