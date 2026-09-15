@@ -442,7 +442,7 @@ pr_json() {
   [[ "$(strip_ansi "$output")" != *"#7 ✓"* ]] && [[ "$(strip_ansi "$output")" != *"#7 ✗"* ]]
   assert_color "$output" 226 "pending yellow"
   run_hud "$(make_json pr_number=7 pr_state=draft)"
-  [[ "$(strip_ansi "$output")" == *"✎ #7"* ]]
+  [[ "$(strip_ansi "$output")" == *"✎ 🐙 #7"* ]]
   run_hud "$(make_json pr_number=7 pr_state=changes_requested)"
   [[ "$(strip_ansi "$output")" == *"#7 ✗"* ]]
   assert_color "$output" 196 "changes requested red"
