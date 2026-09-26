@@ -36,7 +36,7 @@ C_AGENT_FAIL=196
 C_AGENT_STOP=240
 C_AGENT_NAME=39          # agent name
 C_AGENT_META=245         # tokens and elapsed time
-C_AGENT_DESC=240         # task description, truncated to the row width
+C_AGENT_DESC=240         # what the agent is doing now (label), else its task description; truncated to the row width
 AGENT_ELAPSED=1          # 0 hides the elapsed time
 
 MR_CACHE_DIR=/tmp/statusline-hud-$UID   # shared with statusline-hud.sh: the 🤖 ×N count lives here
@@ -63,7 +63,7 @@ fi
 # Free-text fields have tabs/newlines squashed so @tsv keeps the columns.
 parsed=$(jq -r '
   def clean: (. // "-") | tostring | gsub("[\\t\\n\\r]"; " ");
-  ([(.columns // 0), (.session_id | clean)] | @tsv),
+  ([(.columns // 0), (.session_id | clean), (.transcript_path | clean)] | @tsv),
   ((.tasks // [])[]? | [
     (.id | clean),
     (.name | clean),
@@ -72,11 +72,15 @@ parsed=$(jq -r '
     ((.tokenCount // 0) | tonumber? // 0 | floor),
     ((.contextWindowSize // 0) | tonumber? // 0 | floor),
     ((.startTime // 0) | tonumber? // 0 | floor),
-    (.description | clean)
+    ((.label | select(. != "")) // .description | clean)
   ] | @tsv)' 2>/dev/null) || exit 0
 [ -z "$parsed" ] && exit 0
 
-{ IFS=$'\t' read -r columns session_id; } <<<"$parsed"
+{ IFS=$'\t' read -r columns session_id transcript_path; } <<<"$parsed"
+# The payload carries no agent type, but Claude Code writes one next to the
+# session transcript: <transcript>/subagents/agent-<id>.meta.json → agentType.
+meta_dir=""
+[ "$transcript_path" != "-" ] && meta_dir="${transcript_path%.jsonl}/subagents"
 [[ "$columns" =~ ^[0-9]+$ ]] || columns=0
 session_id="${session_id//[^A-Za-z0-9._-]/}"
 
@@ -128,6 +132,11 @@ while IFS=$'\t' read -r id name status effort tokens ctx_size start desc; do
   [ -z "$id" ] && continue
   name="${name//$SCRUB_PAT/}" desc="${desc//$SCRUB_PAT/}"
   [ "$desc" = "-" ] && desc=""
+  [ "$name" = "-" ] && name=""
+  if [ -z "$name" ] && [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] && [ -f "$meta_dir/agent-$id.meta.json" ]; then
+    name=$(jq -r '.agentType // empty' "$meta_dir/agent-$id.meta.json" 2>/dev/null)
+    name="${name//$SCRUB_PAT/}"
+  fi
 
   case "$status" in
     running)   glyph="$AGENT_RUN"; running=$(( running + 1 )) ;;
@@ -152,8 +161,10 @@ while IFS=$'\t' read -r id name status effort tokens ctx_size start desc; do
   meta=$(fmt_tokens "$tokens")
   [ "$AGENT_ELAPSED" = 1 ] && { el=$(fmt_elapsed "$start"); [ -n "$el" ] && meta+=" $el"; }
 
-  content=$(printf '%s \033[38;5;%dm%s%s%s%s \033[38;5;%dm%s%s' \
-    "$glyph" "$C_AGENT_NAME" "$name" "$C_OFF" "$badge" "$ctx" "$C_AGENT_META" "$meta" "$C_OFF")
+  name_part=""
+  [ -n "$name" ] && name_part=$(printf ' \033[38;5;%dm%s%s' "$C_AGENT_NAME" "$name" "$C_OFF")
+  content=$(printf '%s%s%s%s \033[38;5;%dm%s%s' \
+    "$glyph" "$name_part" "$badge" "$ctx" "$C_AGENT_META" "$meta" "$C_OFF")
 
   if [ -n "$desc" ]; then
     room=$(( columns - $(vis_len "$content") - 3 ))

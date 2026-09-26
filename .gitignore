@@ -1,3 +1,6 @@
 CLAUDE.md
 .DS_Store
 .claude/
+blog/*.md
+evals/results/
+.rtk/

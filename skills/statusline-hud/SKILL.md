@@ -1,6 +1,6 @@
 ---
 name: statusline-hud
-description: Install, configure, preview, or uninstall the statusline-hud status line for Claude Code — one line with git, MR/PR badge, pipeline dot, model + effort, context / 5h / 7d bars. Triggers on "install statusline", "set up statusline", "configure statusline", "preview statusline", "uninstall statusline", "/statusline-hud".
+description: Install, configure, preview, or uninstall the statusline-hud status line for Claude Code — one line with git, MR/PR badge, pipeline dot, model + effort, context / 5h / 7d bars. Use for any question about statusline-hud settings, including hiding, showing or reordering segments (SEGMENTS), colours, thresholds, the conf file, or the agent rows. Triggers on "install statusline", "set up statusline", "configure statusline", "preview statusline", "uninstall statusline", "hide the … bar", "show the cache ratio", "/statusline-hud".
 ---
 
 # statusline-hud

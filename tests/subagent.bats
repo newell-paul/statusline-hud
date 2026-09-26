@@ -123,3 +123,29 @@ payload() { printf '{"session_id":"sess-1","columns":120,"tasks":[%s]}' "$1"; }
   [[ "$output" == *"Explore"* ]] && [[ "$output" == *"code-review"* ]]
   [ -z "$(ls -A "$MR_CACHE_DIR")" ]
 }
+
+@test "name slot is omitted when Claude Code sends no name (typed agents send only type=local_agent)" {
+  run_sub '{"session_id":"s","columns":80,"tasks":[{"id":"t1","type":"local_agent","status":"running","tokenCount":500,"label":"Checking tests","description":"run the suite"}]}'
+  [ "$status" -eq 0 ]
+  c=$(printf '%s' "$output" | jq -r .content)
+  [[ "$c" != *" - "* ]]
+  [[ "$c" != *local_agent* ]]
+  [[ "$c" == *"Checking tests"* ]]
+}
+
+@test "missing name is filled from the agentType in the subagent meta file" {
+  local tp="$MR_CACHE_DIR/sess.jsonl"
+  mkdir -p "$MR_CACHE_DIR/sess/subagents"
+  printf '{"agentType":"test-runner","description":"Run the bats test suite"}' > "$MR_CACHE_DIR/sess/subagents/agent-t1.meta.json"
+  run_sub "{\"session_id\":\"s\",\"columns\":80,\"transcript_path\":\"$tp\",\"tasks\":[{\"id\":\"t1\",\"type\":\"local_agent\",\"status\":\"running\",\"tokenCount\":500,\"description\":\"run the suite\"},{\"id\":\"t2\",\"type\":\"local_agent\",\"status\":\"running\",\"tokenCount\":500,\"description\":\"no meta\"}]}"
+  [ "$status" -eq 0 ]
+  [[ "$(printf '%s\n' "$output" | sed -n 1p | jq -r .content)" == *"🤖 "*"test-runner"* ]]
+  [[ "$(printf '%s\n' "$output" | sed -n 2p | jq -r .content)" != *" - "* ]]
+}
+
+@test "row shows the live label when present, else the task description" {
+  run_sub '{"session_id":"s","columns":80,"tasks":[{"id":"t1","name":"a","status":"running","tokenCount":1,"label":"Reading tests/mr.bats","description":"run the suite"}]}'
+  [[ "$(printf '%s' "$output" | jq -r .content)" == *"Reading tests/mr.bats"* ]]
+  run_sub '{"session_id":"s","columns":80,"tasks":[{"id":"t1","name":"a","status":"running","tokenCount":1,"label":"","description":"run the suite"}]}'
+  [[ "$(printf '%s' "$output" | jq -r .content)" == *"run the suite"* ]]
+}
