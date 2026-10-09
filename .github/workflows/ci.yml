@@ -19,6 +19,23 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q bats jq
       - run: bats tests/
 
+  bats-macos:
+    name: bats tests (macOS, bash 3.2)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: brew install bats-core
+      # Homebrew bash 5 sits ahead of /bin/bash on the runner; put /bin first
+      # so the scripts (and bats) run under the system bash 3.2 the README
+      # promises. Note bash 3.2 does not fail a test on a false `[[ ]]`, so
+      # this job proves the scripts run there; the ubuntu job enforces the
+      # `[[` assertions.
+      - run: |
+          export PATH="/bin:/usr/bin:$PATH"
+          bash --version | head -1
+          bats tests/
+
   plugin-validate:
     name: claude plugin validate
     runs-on: ubuntu-latest
