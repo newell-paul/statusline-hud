@@ -96,9 +96,12 @@ Append the assignment to the conf file with its new value. Common requests:
 
 | Request | Assignment |
 |---|---|
-| hide / reorder segments | `SEGMENTS=(dir git lines mr ci model agents ctx rl5 rl7 session worktree cache turn)` — omit names to hide |
-| agent rows | `C_AGENT_NAME=39` `C_AGENT_DESC=240` `AGENT_RUN="🤖"` `AGENT_ELAPSED=0` (hide elapsed) |
+| hide / reorder segments | `SEGMENTS=(dir git lines mr ci model agents link ctx rl5 rl7 session worktree cache turn)` — omit names to hide |
+| agent rows | `C_AGENT_NAME=39` `C_AGENT_DESC=240` `AGENT_ELAPSED=0` (hide elapsed) `AGENT_NAME_WIDTH=12` (name column; all columns are fixed width) |
+| agent row gauge | `AGENT_GAUGE=tokens` (default: `███▎░`, work so far on a log scale, `GAUGE_FLOOR=1000` empty, `GAUGE_FULL=100000` full, never shrinks) `activity` (last tick's growth vs the busiest tick) `spark` (`▁▂▃▅▇█▅▇`) `pulse` (`●`/`○`) `rate` (`+1.2k`) `ctx` (the agent's own context bar) `off`; `C_GAUGE_BUSY=46` `C_GAUGE_IDLE=240` |
+| agent row glyph per model | `AGENT_RUN="🤖"` (default, Sonnet and unknown) `AGENT_RUN_OPUS="🧠"` `AGENT_RUN_HAIKU="🐇"` `AGENT_RUN_FABLE="📖"` `AGENT_RUN_SONNET=""` — matched on the task's resolved model id; `""` falls back to `AGENT_RUN` |
 | 🤖 ×N count on the main line | add `agents` to `SEGMENTS` (off by default); `C_AGENTS=141` colours it, `AGENTS_TTL=15` is how long it lingers after the last agent finishes |
+| agent-link agents on the main line | add `link` to `SEGMENTS` (off by default): `🌀 ♊`, one glyph per CLI spawned through agent-link by this session while it runs; `LINK_CLAUDE="🤖"` `LINK_CODEX="🌀"` `LINK_GEMINI="♊"` `LINK_AIDER="🧩"` `LINK_OTHER="🔗"` `C_LINK=141` |
 | show the 🔥 spend | add `turn` to `SEGMENTS`; `TURN_UNIT=usd` or `tokens`; `TURN_RATE=0` drops the `($/h)` burn rate |
 | show the cache ratio | add `cache` to `SEGMENTS` |
 | session name / worktree | add `session` and/or `worktree` to `SEGMENTS` |
@@ -144,6 +147,7 @@ Fields consumed:
 |---|---|
 | dir | `.workspace.current_dir` (fallback `.cwd`) |
 | agents | not from stdin — `subagent-statusline.sh` writes the running count to `$MR_CACHE_DIR/agents-<session_id>` from its `tasks[]`; the main line reads it via `.session_id` |
+| link | not from stdin — one `ps -axo pid=,ppid=,args=` pass finds the `agent-link-mcp` server under this session's Claude process and lists its children by command name |
 | model | `.model.display_name` (fallback `.model.name`), `.effort.level`, `.fast_mode`, `.thinking.enabled` |
 | ctx | `.context_window.used_percentage` |
 | rl5 / rl7 | `.rate_limits.five_hour.*` / `.rate_limits.seven_day.*` — `used_percentage`, `resets_at` |
