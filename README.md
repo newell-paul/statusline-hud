@@ -16,7 +16,8 @@ Left to right. Segments marked *off* are in the script but not in the default `S
 - **MR/PR badge** `🦊 !23 ✓` / `🐙 #42 ✓` — green mergeable, red conflicts, yellow while checks run, `✎` draft, `⇄` merged. Read from the payload on Claude Code ≥ 2.1.234, otherwise via `glab` / `gh`. Cmd-click opens it
 - **Pipeline dot** — latest run for the branch: 🟢 🔴 🟡 ⚪ ⚫ ⏭ ✋. ⚪ when the run is for an older commit than your HEAD. Cmd-click opens it
 - **Model** — coloured by tier, with `⚡Lo` … `⚡Max` effort badge, 🚀 for `/fast`, 💭 for extended thinking
-- **Subagent count** (*off*) `🤖 ×2` — the agent rows already show each one - **agent-link agents** (*off*) `🌀 ♊` — a glyph per CLI spawned through [agent-link](https://www.npmjs.com/package/agent-link-mcp) by this session while it runs (🤖 claude, 🌀 codex, ♊ gemini, 🧩 aider). Found by scanning the process table, so it needs no cache file
+- **Subagent count** (*off*) `🤖 ×2` — the agent rows already show each one
+- **agent-link agents** (*off*) `🌀 ♊` — a glyph per CLI spawned through agent-link while it runs. See [Gemini and Codex](#gemini-and-codex)
 - **Context bar** — green → yellow (30%) → orange (50%) → red (60%)
 - **5-hour and 7-day bars** — green → yellow (60%) → orange (80%) → red (95%), with a reset countdown `↺2h14m` above 60%
 - **Session name** and **worktree** `⎇ my-feature` (*off*)
@@ -38,6 +39,32 @@ Claude Code gives no completion signal for a task, so the bar shows work so far:
 Teammates from the experimental agent-teams feature aren't passed to `subagentStatusLine`, so they keep the stock row.
 
 Preview it: `bash subagent-statusline.sh --demo | jq -r .content`.
+
+## Gemini and Codex
+
+Claude Code can hand work to other CLIs through the [agent-link](https://www.npmjs.com/package/agent-link-mcp) MCP server. Each Claude session starts its own agent-link server, and that server spawns the `gemini` or `codex` process. Add it once:
+
+```
+claude mcp add agent-link -- npx agent-link-mcp
+```
+
+Then turn on the `link` segment in `~/.claude/statusline-hud.conf` (off by default):
+
+```bash
+SEGMENTS=(git lines mr ci model link ctx rl5 rl7)
+```
+
+While a spawned CLI runs you get one glyph per agent, in purple, next to the model name:
+
+| CLI | glyph |
+|---|---|
+| claude | 🤖 |
+| codex | 🌀 |
+| gemini | ♊ |
+| aider | 🧩 |
+| anything else | 🔗 |
+
+Two Gemini agents and a Codex show as `♊ ♊ 🌀`. The glyphs disappear when the process exits. It works by scanning the process table for children of this session's agent-link server, so there is no cache file. Swap the glyphs with `LINK_CODEX="…"` and `LINK_GEMINI="…"` in the conf.
 
 ## Install
 
