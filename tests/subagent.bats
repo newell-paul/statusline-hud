@@ -230,7 +230,7 @@ gauge_plain() { strip_ansi "$(printf '%s' "$output" | jq -r .content)"; }
     {"id":"t4","name":"d","status":"running","tokenCount":1},
     {"id":"t5","name":"e","status":"running","model":"claude-fable-5-1","tokenCount":1}]}'
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | jq -r .content | cut -c1 | paste -sd, -)" = "🧠,🐇,🤖,🤖,📖" ]
+  [ "$(printf '%s\n' "$output" | jq -r '.content[:1]' | paste -sd, -)" = "🧠,🐇,🤖,🤖,📖" ]
 }
 
 @test "per-model glyphs come from the conf; an empty one falls back to AGENT_RUN" {
@@ -238,7 +238,7 @@ gauge_plain() { strip_ansi "$(printf '%s' "$output" | jq -r .content)"; }
   run_sub '{"session_id":"s","columns":80,"tasks":[
     {"id":"t1","name":"a","status":"running","model":"claude-opus-5-5","tokenCount":1},
     {"id":"t2","name":"b","status":"running","model":"claude-haiku-5-5","tokenCount":1}]}'
-  [ "$(printf '%s\n' "$output" | jq -r .content | cut -c1 | paste -sd, -)" = "🦉,🦾" ]
+  [ "$(printf '%s\n' "$output" | jq -r '.content[:1]' | paste -sd, -)" = "🦉,🦾" ]
   rm -f "$HUD_CONF"
 }
 
