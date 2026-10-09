@@ -57,6 +57,8 @@ C_FAST=226              # 🚀 fast-mode indicator
 C_THINK=141             # 💭 extended-thinking indicator
 C_AGENTS=141            # 🤖 ×N running subagents (agents segment)
 AGENTS_TTL=15           # seconds before the count written by subagent-statusline.sh is stale
+C_LINK=141              # agents spawned via agent-link (link segment): one glyph per running CLI
+LINK_CLAUDE="🤖"; LINK_CODEX="🌀"; LINK_GEMINI="♊"; LINK_AIDER="🧩"; LINK_OTHER="🔗"
 C_SESSION=245           # session name (session segment)
 C_WORKTREE=176          # ⎇ worktree name (worktree segment)
 SESSION_MAX=24          # session name truncated to this many characters
@@ -134,9 +136,9 @@ MR_LINK_STYLE=0         # SGR applied to a linked ref: 4 underline, 1 bold, 0 no
 NERD_FONT=0             # 1 = Nerd Font glyphs for the MR prefixes and pipeline dot instead of emoji
 
 # Which segments render, in left-to-right order. Comment a line to disable;
-# move lines to reorder. Recognised: dir, git, mr, ci, model, agents, ctx,
-# rl5, rl7, lines, session, worktree, cache, turn. Any seg_<name>() function defined in
-# the conf file is a segment too.
+# move lines to reorder. Recognised: dir, git, mr, ci, model, agents, link,
+# ctx, rl5, rl7, lines, session, worktree, cache, turn. Any seg_<name>()
+# function defined in the conf file is a segment too.
 SEGMENTS=(
   # dir         # current working directory
   git         # branch name, ahead/behind, dirty marker
@@ -145,6 +147,7 @@ SEGMENTS=(
   ci          # latest pipeline for the branch as a traffic-light dot (glab / gh)
   model       # model display name, effort badge, fast-mode rocket
   # agents      # 🤖 ×N subagents running (needs subagent-statusline.sh wired in)
+  # link        # a glyph per agent spawned via agent-link while it runs (🌀 ♊)
   ctx         # context-window usage bar
   rl5         # 5-hour rate-limit bar with reset countdown
   rl7         # 7-day rate-limit bar with reset countdown
@@ -160,6 +163,7 @@ SEGMENTS=(
 #   SEP_CHAR=" | "
 #   SEGMENTS=(git model ctx rl5)
 HUD_CONF=~/.claude/statusline-hud.conf
+# shellcheck source=/dev/null
 [ -f "$HUD_CONF" ] && . "$HUD_CONF"
 case "$TURN_UNIT" in usd|tokens) ;; *) TURN_UNIT=usd ;; esac
 if [ "$NERD_FONT" = 1 ]; then
@@ -175,7 +179,7 @@ if [ "$NERD_FONT" = 1 ]; then
   [ "$CI_MANUAL" = "✋" ] && CI_MANUAL=$'\033[38;5;214m\033[0m'
 fi
 if [ -n "$HUD_DEMO" ]; then
-  SEGMENTS=(dir git lines mr ci model agents ctx rl5 rl7 session worktree cache turn)
+  SEGMENTS=(dir git lines mr ci model agents link ctx rl5 rl7 session worktree cache turn)
   now=$(date +%s)
   exec < <(printf '{"workspace":{"current_dir":"%s","git_worktree":"feature-xyz"},"session_name":"Wire up the statusline","model":{"display_name":"Opus 5"},"effort":{"level":"high"},"fast_mode":false,"thinking":{"enabled":true},"context_window":{"used_percentage":47,"total_input_tokens":94000,"current_usage":{"cache_read_input_tokens":88000}},"cost":{"total_cost_usd":5.64,"total_duration_ms":5400000,"total_lines_added":156,"total_lines_removed":23},"rate_limits":{"five_hour":{"used_percentage":76,"resets_at":%d},"seven_day":{"used_percentage":31,"resets_at":%d}},"prompt_cache":{"hit_ratio":0.94,"warm":true,"expires_at":%d},"pr":{"number":42,"url":"https://github.com/acme/widgets/pull/42","review_state":"approved"}}' "$PWD" $((now+8040)) $((now+250000)) $((now+250)))
 fi
@@ -392,6 +396,38 @@ if [ -n "$session_id" ] && [ -O "$MR_CACHE_DIR" ]; then
 fi
 [ -n "$HUD_DEMO" ] && agents_n=2
 
+# ─── agent-link agents ──────────────────────────────────────────────────────
+# agent-link-mcp keeps its sessions in memory, but each Claude session runs
+# its own server as a child process, and that server spawns the agent CLIs.
+# One ps pass: walk up from this script to the server under the same Claude
+# process, then list its children by command name.
+link_str=""
+if [ -n "$HUD_DEMO" ]; then
+  link_str="$LINK_CODEX $LINK_GEMINI"
+else
+  case " ${SEGMENTS[*]} " in *" link "*)
+    while read -r cli; do
+      case "${cli//$SCRUB_PAT/}" in
+        claude)     link_str+=" $LINK_CLAUDE" ;;
+        codex)      link_str+=" $LINK_CODEX" ;;
+        gemini|agy) link_str+=" $LINK_GEMINI" ;;
+        aider)      link_str+=" $LINK_AIDER" ;;
+        *)          link_str+=" $LINK_OTHER" ;;
+      esac
+    done < <(ps -axo pid=,ppid=,args= 2>/dev/null | LC_ALL=C awk -v me=$$ '
+      { pp[$1] = $2; c = $3; sub(/.*\//, "", c); cmd[$1] = c; args[$1] = $0 }
+      END {
+        for (p = me; p > 1 && n++ < 8; p = pp[p]) anc[p] = 1
+        for (p in pp) if (args[p] ~ /agent-link-mcp/) {
+          i = 0
+          for (q = pp[p]; q > 1 && i < 4; q = pp[q]) { i++; if (q in anc) { link[p] = 1; break } }
+        }
+        for (p in pp) if ((pp[p] in link) && args[p] !~ /agent-link-mcp/) print p "\t" cmd[p]
+      }' | sort -n | cut -f2)
+    link_str="${link_str# }" ;;
+  esac
+fi
+
 # ─── Power-bar renderer ─────────────────────────────────────────────────────
 # bar() — render a 5-cell sub-stepped power bar in one tier colour.
 # Args:    $1       = percent (0–100, clamped, non-integers → 0)
@@ -436,7 +472,8 @@ IFS='|' read -r rl7_fill rl7_empty _ < <(bar "${rl7:-0}" "${BAR_LINEAR[@]}")
 # Args:   $1 = unix epoch (resets_at from JSON)
 # Output: countdown string, or empty if already expired.
 fmt_reset() {
-  local now=$(date +%s) target="$1" diff h m
+  local now target="$1" diff h m
+  now=$(date +%s)
   diff=$(( target - now ))
   (( diff <= 0 )) && return
   h=$(( diff / 3600 ))
@@ -635,6 +672,7 @@ fi
 # The cache lives in a shared /tmp: keep it private, and refuse to use a
 # directory someone else created (they could plant badges and link targets).
 if [ -n "$mr_host" ]; then
+  # shellcheck disable=SC2174  # only the cache dir itself needs the mode
   mkdir -p -m 700 "$MR_CACHE_DIR" 2>/dev/null
   [ -O "$MR_CACHE_DIR" ] && chmod 700 "$MR_CACHE_DIR" 2>/dev/null || mr_host=""
 fi
@@ -694,6 +732,7 @@ seg_dir()   { printf "\033[38;5;%dm%s%s" "$C_DIR" "$dir" "$C_OFF"; }
 seg_git()   { printf "%s" "$git_part"; }
 seg_model() { printf "\033[38;5;%dm%s%s%s" "$model_color" "$model" "$C_OFF" "$badge"; }
 seg_agents() { (( agents_n > 0 )) && printf "\033[38;5;%dm🤖 ×%d%s" "$C_AGENTS" "$agents_n" "$C_OFF"; return 0; }
+seg_link()  { [ -n "$link_str" ] && printf "\033[38;5;%dm%s%s" "$C_LINK" "$link_str" "$C_OFF"; return 0; }
 seg_ctx()   { printf "ctx:%s%s%s%s%s" "$BG_BAR" "$ctx_fill" "$EMPTY_FG" "$ctx_empty" "$C_OFF"; }
 seg_rl5()   {
   printf "5h:%s%s%s%s%s" "$BG_BAR" "$rl5_fill" "$EMPTY_FG" "$rl5_empty" "$C_OFF"

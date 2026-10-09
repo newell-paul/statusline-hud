@@ -16,7 +16,7 @@ Left to right. Segments marked *off* are in the script but not in the default `S
 - **MR/PR badge** `🦊 !23 ✓` / `🐙 #42 ✓` — green mergeable, red conflicts, yellow while checks run, `✎` draft, `⇄` merged. Read from the payload on Claude Code ≥ 2.1.234, otherwise via `glab` / `gh`. Cmd-click opens it
 - **Pipeline dot** — latest run for the branch: 🟢 🔴 🟡 ⚪ ⚫ ⏭ ✋. ⚪ when the run is for an older commit than your HEAD. Cmd-click opens it
 - **Model** — coloured by tier, with `⚡Lo` … `⚡Max` effort badge, 🚀 for `/fast`, 💭 for extended thinking
-- **Subagent count** (*off*) `🤖 ×2` — the agent rows already show each one
+- **Subagent count** (*off*) `🤖 ×2` — the agent rows already show each one - **agent-link agents** (*off*) `🌀 ♊` — a glyph per CLI spawned through [agent-link](https://www.npmjs.com/package/agent-link-mcp) by this session while it runs (🤖 claude, 🌀 codex, ♊ gemini, 🧩 aider). Found by scanning the process table, so it needs no cache file
 - **Context bar** — green → yellow (30%) → orange (50%) → red (60%)
 - **5-hour and 7-day bars** — green → yellow (60%) → orange (80%) → red (95%), with a reset countdown `↺2h14m` above 60%
 - **Session name** and **worktree** `⎇ my-feature` (*off*)
@@ -29,9 +29,11 @@ Preview it: `bash statusline-hud.sh --demo`.
 
 ## Agent rows
 
-![A subagent's row under the prompt: 🤖, its own context bar, tokens, elapsed time, and what it's doing right now](blog/images/agent-row.png)
+![A subagent's row under the prompt: 🤖, an activity bar, tokens, elapsed time, and what it's doing right now](blog/images/agent-row.png)
 
-`subagent-statusline.sh`, wired in as `subagentStatusLine`, restyles the rows Claude Code draws under the prompt while subagents run: name, effort badge, the agent's own context bar, tokens, elapsed, and what it's doing right now. ✗ red for a failed agent, ■ grey for a stopped one.
+`subagent-statusline.sh`, wired in as `subagentStatusLine`, restyles the rows Claude Code draws under the prompt while subagents run: a glyph for the model (🧠 Opus, 🤖 Sonnet, 🐇 Haiku, 📖 Fable), name, effort badge, an activity bar, tokens, elapsed, and what it's doing right now. ✗ red for a failed agent, ■ grey for a stopped one. Every column is fixed width (names padded or cut to `AGENT_NAME_WIDTH`), so rows line up.
+
+Claude Code gives no completion signal for a task, so the bar shows work so far: tokens used on a log scale, empty at `GAUGE_FLOOR` (1k) and full at `GAUGE_FULL` (100k). It only ever grows. `AGENT_GAUGE` picks another style instead: `activity` fills by the latest tick's growth against the busiest tick (built from the last token readings, one per refresh tick, so a waiting agent shows empty), `spark` `▁▂▃▅▇█▅▇` (8 ticks), `pulse` `●`/`○`, `rate` `+1.2k`, `ctx` for the agent's own context bar, or `off`.
 
 Teammates from the experimental agent-teams feature aren't passed to `subagentStatusLine`, so they keep the stock row.
 
@@ -105,13 +107,14 @@ SEGMENTS=(git k8s model ctx rl5 rl7)
 
 Bash 3.2+, `jq`, `awk`, `git`. Tested on Claude Code 2.1.x. A `github.com` remote picks `gh`; any other host picks `glab`, so self-hosted GitLab works with `glab auth login --hostname`. Bitbucket, Gitea and Azure DevOps remotes fail quietly and hide the two forge segments.
 
-Every segment except `mr`, `ci` and `agents` is a pure function of stdin. Those three keep small cache files under `/tmp/statusline-hud-$UID` so a render never waits on the network.
+Every segment except `mr`, `ci`, `agents` and `link` is a pure function of stdin. `link` reads the process table; the other three keep small cache files under `/tmp/statusline-hud-$UID` so a render never waits on the network.
 
 ## Tests
 
 ```sh
-brew install bats-core
+brew install bats-core shellcheck
 bats tests/
+git config core.hooksPath scripts/hooks   # pre-commit: shellcheck staged scripts, bats staged test files
 ```
 
 200 tests, including a recorded JSON contract that fails if Claude Code changes a field the script reads. Refresh it after an intentional change with `./tests/regen-schema.sh`.
