@@ -122,7 +122,7 @@ fmt_elapsed() {
 # two cells, which matters for the 🤖 prefix.
 vis_len() {
   local plain; plain=$(printf '%s' "$1" | sed -E $'s/\033\\[[0-9;]*m//g')
-  local n=${#plain} wide; wide=$(printf '%s' "$plain" | grep -o "$AGENT_RUN" | wc -l)
+  local n=${#plain} wide; wide=$(printf '%s' "$plain" | grep -F -o "$AGENT_RUN" | wc -l)
   printf '%d' $(( n + wide ))
 }
 

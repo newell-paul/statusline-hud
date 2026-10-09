@@ -116,6 +116,20 @@ payload() { printf '{"session_id":"sess-1","columns":120,"tasks":[%s]}' "$1"; }
   rm -f "$HUD_CONF"
 }
 
+@test "a regex-metachar AGENT_RUN glyph is counted literally, not as a pattern" {
+  HUD_CONF=$(mktemp); echo 'AGENT_RUN="."' > "$HUD_CONF"
+  # Content before the description is ~30 columns; a 60-char description fits
+  # the real room (87) but not the room a doubled width leaves (57).
+  local desc; desc=$(printf 'x%.0s' $(seq 60))
+  run_sub "$(payload "$(task_json t1 Explore running high 1 1 "$desc")")"
+  [ "$status" -eq 0 ]
+  content=$(printf '%s' "$output" | jq -r .content)
+  echo "$content"
+  [ "$(printf '%s' "$content" | grep -cF '. ')" = 1 ]
+  [ "$(printf '%s' "$content" | grep -cF '…')" = 0 ]
+  rm -f "$HUD_CONF"
+}
+
 @test "--demo renders three rows and writes no count file" {
   SUB_ARGS=--demo run_sub ''
   [ "$status" -eq 0 ]
