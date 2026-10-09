@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Pre-commit: shellcheck every staged shell script and run every staged bats
+# file. Wire it once per clone with: git config core.hooksPath scripts/hooks
+# bats runs under Homebrew bash when present, since bash 3.2 makes [[ ]]
+# assertions inert.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+scripts=$(grep -E '\.sh$|^scripts/hooks/' <<<"$staged" || true)
+tests=$(grep -E '^tests/.*\.bats$' <<<"$staged" || true)
+if [ -n "$scripts" ]; then
+  command -v shellcheck >/dev/null || { echo "pre-commit: shellcheck not installed (brew install shellcheck)" >&2; exit 1; }
+  # shellcheck disable=SC2086  # one path per word, no spaces in this repo
+  shellcheck -S warning $scripts
+fi
+if [ -n "$tests" ]; then
+  command -v bats >/dev/null || { echo "pre-commit: bats not installed (brew install bats-core)" >&2; exit 1; }
+  # shellcheck disable=SC2086
+  PATH="/opt/homebrew/bin:$PATH" bats $tests
+fi

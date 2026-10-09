@@ -55,6 +55,7 @@ C_GAUGE_IDLE=240         # ... and when the last reading did not move
 MR_CACHE_DIR=/tmp/statusline-hud-$UID   # shared with statusline-hud.sh: the 🤖 ×N count lives here
 
 HUD_CONF=~/.claude/statusline-hud.conf
+# shellcheck source=/dev/null
 [ -f "$HUD_CONF" ] && . "$HUD_CONF"
 # ─── END CONFIG ─────────────────────────────────────────────────────────────
 
@@ -249,6 +250,7 @@ done < <(tail -n +2 <<<"$parsed")
 # Running-agent count for the main line's `agents` segment. Written atomically
 # and keyed by session so parallel sessions don't see each other's fleet.
 if [ -n "$session_id" ] && [ -z "$HUD_DEMO" ]; then
+  # shellcheck disable=SC2174  # only the cache dir itself needs the mode
   mkdir -p -m 700 "$MR_CACHE_DIR" 2>/dev/null
   if [ -O "$MR_CACHE_DIR" ]; then
     f="$MR_CACHE_DIR/agents-$session_id"

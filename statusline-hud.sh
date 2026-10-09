@@ -163,6 +163,7 @@ SEGMENTS=(
 #   SEP_CHAR=" | "
 #   SEGMENTS=(git model ctx rl5)
 HUD_CONF=~/.claude/statusline-hud.conf
+# shellcheck source=/dev/null
 [ -f "$HUD_CONF" ] && . "$HUD_CONF"
 case "$TURN_UNIT" in usd|tokens) ;; *) TURN_UNIT=usd ;; esac
 if [ "$NERD_FONT" = 1 ]; then
@@ -471,7 +472,8 @@ IFS='|' read -r rl7_fill rl7_empty _ < <(bar "${rl7:-0}" "${BAR_LINEAR[@]}")
 # Args:   $1 = unix epoch (resets_at from JSON)
 # Output: countdown string, or empty if already expired.
 fmt_reset() {
-  local now=$(date +%s) target="$1" diff h m
+  local now target="$1" diff h m
+  now=$(date +%s)
   diff=$(( target - now ))
   (( diff <= 0 )) && return
   h=$(( diff / 3600 ))
@@ -670,6 +672,7 @@ fi
 # The cache lives in a shared /tmp: keep it private, and refuse to use a
 # directory someone else created (they could plant badges and link targets).
 if [ -n "$mr_host" ]; then
+  # shellcheck disable=SC2174  # only the cache dir itself needs the mode
   mkdir -p -m 700 "$MR_CACHE_DIR" 2>/dev/null
   [ -O "$MR_CACHE_DIR" ] && chmod 700 "$MR_CACHE_DIR" 2>/dev/null || mr_host=""
 fi

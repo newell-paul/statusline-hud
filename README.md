@@ -112,8 +112,9 @@ Every segment except `mr`, `ci`, `agents` and `link` is a pure function of stdin
 ## Tests
 
 ```sh
-brew install bats-core
+brew install bats-core shellcheck
 bats tests/
+git config core.hooksPath scripts/hooks   # pre-commit: shellcheck staged scripts, bats staged test files
 ```
 
 200 tests, including a recorded JSON contract that fails if Claude Code changes a field the script reads. Refresh it after an intentional change with `./tests/regen-schema.sh`.
