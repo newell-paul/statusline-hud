@@ -21,12 +21,11 @@ load helpers
   assert_no_color "$output" 46  "no green fill at 0%"
 }
 
-@test "missing rate_limits defaults to 0% (empty 5h bar, no fill colour)" {
+@test "missing rate_limits hides the 5h and 7d segments" {
   run_hud '{"cwd":"/tmp","model":{"display_name":"Opus 4.7"},"context_window":{"used_percentage":10},"cost":{"total_cost_usd":0,"total_duration_ms":0}}'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"5h:"* ]]
-  # 5h section should contain the empty-track glyphs after the label
-  [[ "$output" == *"5h:"*"░░░░░"* ]]
+  case "$output" in *"5h:"*|*"7d:"*) echo "unexpected rate-limit bar: $output"; return 1 ;; esac
+  [ "${output%%ctx:*}" != "$output" ]
 }
 
 @test "real Haiku JSON payload (no effort field)" {
