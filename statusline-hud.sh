@@ -210,10 +210,10 @@ tsv=$(jq -r '[
   .model.display_name // .model.name // "?",
   ((.context_window.used_percentage // 0) | tonumber? // 0 | floor),
   ((.cost.total_cost_usd // 0) | tonumber? // 0),
-  ((.rate_limits.five_hour.used_percentage // 0) | tonumber? // 0 | floor),
+  ((.rate_limits.five_hour.used_percentage | tonumber? | floor) // "-"),
   .effort.level // "-",
   (.fast_mode // false | tostring),
-  ((.rate_limits.seven_day.used_percentage // 0) | tonumber? // 0 | floor),
+  ((.rate_limits.seven_day.used_percentage | tonumber? | floor) // "-"),
   ((.rate_limits.five_hour.resets_at // 0) | tonumber? // 0 | floor),
   ((.rate_limits.seven_day.resets_at // 0) | tonumber? // 0 | floor),
   ((.context_window.current_usage.cache_read_input_tokens // 0) | tonumber? // 0 | floor),
@@ -240,8 +240,10 @@ tsv=$(jq -r '[
 # empty cwd field; it's stripped immediately below.
 IFS=$'\t' read -r cwd model used cost rl5 effort fast rl7 rl5_reset rl7_reset cache_read total_input pc_ratio pc_warm pr_number pr_url pr_state pr_kind thinking lines_add lines_del pc_expires dur_ms session_name worktree repo_host session_id < <(printf 'x%s\n' "$tsv")
 cwd="${cwd#x}"
-used=${used:-0} rl5=${rl5:-0} cost=${cost:-0} effort=${effort:-} fast=${fast:-false}
-rl7=${rl7:-0} rl5_reset=${rl5_reset:-0} rl7_reset=${rl7_reset:-0} cache_read=${cache_read:-0} total_input=${total_input:-0}
+used=${used:-0} cost=${cost:-0} effort=${effort:-} fast=${fast:-false}
+[ "$rl5" = "-" ] && rl5=""
+[ "$rl7" = "-" ] && rl7=""
+rl5_reset=${rl5_reset:-0} rl7_reset=${rl7_reset:-0} cache_read=${cache_read:-0} total_input=${total_input:-0}
 [ "$pc_ratio" = "-" ] && pc_ratio=""
 [ "$pc_warm" = "-" ] && pc_warm=""
 [ "$pr_number" = "-" ] && pr_number=""
@@ -735,12 +737,14 @@ seg_agents() { (( agents_n > 0 )) && printf "\033[38;5;%dm🤖 ×%d%s" "$C_AGENT
 seg_link()  { [ -n "$link_str" ] && printf "\033[38;5;%dm%s%s" "$C_LINK" "$link_str" "$C_OFF"; return 0; }
 seg_ctx()   { printf "ctx:%s%s%s%s%s" "$BG_BAR" "$ctx_fill" "$EMPTY_FG" "$ctx_empty" "$C_OFF"; }
 seg_rl5()   {
+  [ -z "$rl5" ] && return 0
   printf "5h:%s%s%s%s%s" "$BG_BAR" "$rl5_fill" "$EMPTY_FG" "$rl5_empty" "$C_OFF"
   if [ -n "$reset_str" ] && (( rl5 >= rl7 )) && (( rl5 >= RESET_COUNTDOWN_PCT )); then
     printf " %s↺%s%s" "$RESET_FG" "$reset_str" "$C_OFF"
   fi
 }
 seg_rl7()   {
+  [ -z "$rl7" ] && return 0
   printf "7d:%s%s%s%s%s" "$BG_BAR" "$rl7_fill" "$EMPTY_FG" "$rl7_empty" "$C_OFF"
   if [ -n "$reset_str" ] && ! { (( rl5 >= rl7 )) && (( rl5 >= RESET_COUNTDOWN_PCT )); }; then
     printf " %s↺%s%s" "$RESET_FG" "$reset_str" "$C_OFF"

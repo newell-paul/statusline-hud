@@ -19,7 +19,7 @@ Left to right. Segments marked *off* are in the script but not in the default `S
 - **Subagent count** (*off*) `🤖 ×2` — the agent rows already show each one
 - **agent-link agents** (*off*) `🌀 ♊` — a glyph per CLI spawned through agent-link while it runs. See [Gemini and Codex](#gemini-and-codex)
 - **Context bar** — green → yellow (30%) → orange (50%) → red (60%)
-- **5-hour and 7-day bars** — green → yellow (60%) → orange (80%) → red (95%), with a reset countdown `↺2h14m` above 60%
+- **5-hour and 7-day bars** — green → yellow (60%) → orange (80%) → red (95%), with a reset countdown `↺2h14m` above 60%. Shown only when Claude Code reports the figures: Pro/Max subscriptions, after the first turn. API-key sessions get no bars rather than empty ones
 - **Session name** and **worktree** `⎇ my-feature` (*off*)
 - **Cache hit ratio** (*off*) `↩97%` — cyan `❄` when the cached prefix has gone cold, `❄4m` while it's warm but about to lapse
 - **Session spend** (*off*) `🔥 $5.64 ($3.20/h)` — green under $5, amber to $20, red above. `TURN_UNIT=tokens` for input tokens instead
@@ -30,9 +30,9 @@ Preview it: `bash statusline-hud.sh --demo`.
 
 ## Agent rows
 
-![A subagent's row under the prompt: 🤖, an activity bar, tokens, elapsed time, and what it's doing right now](blog/images/agent-row.png)
+![Two subagent rows under the prompt: a Haiku test-runner and a Sonnet reviewer, each with its model glyph, effort badge, progress bar, tokens, elapsed time, and what it's doing right now](blog/images/agent-row.png)
 
-`subagent-statusline.sh`, wired in as `subagentStatusLine`, restyles the rows Claude Code draws under the prompt while subagents run: a glyph for the model (🧠 Opus, 🤖 Sonnet, 🐇 Haiku, 📖 Fable), name, effort badge, an activity bar, tokens, elapsed, and what it's doing right now. ✗ red for a failed agent, ■ grey for a stopped one. Every column is fixed width (names padded or cut to `AGENT_NAME_WIDTH`), so rows line up.
+`subagent-statusline.sh`, wired in as `subagentStatusLine`, restyles the rows Claude Code draws under the prompt while subagents run: a glyph for the model (🧠 Opus, 🤖 Sonnet, 🐇 Haiku, 📖 Fable), name, effort badge, a progress bar, tokens, elapsed, and what it's doing right now. ✗ red for a failed agent, ■ grey for a stopped one. Every column is fixed width (names padded or cut to `AGENT_NAME_WIDTH`), so rows line up.
 
 Claude Code gives no completion signal for a task, so the bar shows work so far: tokens used on a log scale, empty at `GAUGE_FLOOR` (1k) and full at `GAUGE_FULL` (100k). It only ever grows. `AGENT_GAUGE` picks another style instead: `activity` fills by the latest tick's growth against the busiest tick (built from the last token readings, one per refresh tick, so a waiting agent shows empty), `spark` `▁▂▃▅▇█▅▇` (8 ticks), `pulse` `●`/`○`, `rate` `+1.2k`, `ctx` for the agent's own context bar, or `off`.
 
