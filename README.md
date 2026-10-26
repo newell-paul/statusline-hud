@@ -109,7 +109,7 @@ To uninstall, remove the scripts and conf from `~/.claude/` and the two blocks f
 
 ## Configuration
 
-Every setting is a plain assignment in the CONFIG block at the top of each script. Override any of them in `~/.claude/statusline-hud.conf`, which both scripts source, so updates never wipe your changes. No env vars.
+Every setting is a plain assignment in the CONFIG block at the top of each script. Override any of them in `~/.claude/statusline-hud.conf`, which every script sources, so updates never wipe your changes. No env vars.
 
 ```bash
 SEGMENTS=(git lines mr ci model ctx rl5 rl7)   # what shows, in order; add cache, turn, session, worktree, dir, agents
@@ -120,6 +120,14 @@ TURN_UNIT=tokens       # 🔥 as input tokens instead of USD
 ```
 
 Colours are `C_*` xterm-256 indices; bar thresholds are `BAR_CTX` and `BAR_LINEAR`; the pipeline glyphs are `CI_PASS` … `CI_MANUAL`. The CONFIG block documents the rest.
+
+### Session title from the branch
+
+```bash
+SESSION_TITLE=branch   # default off
+```
+
+Names each session after its git branch, the same as `/rename`, and renames it on your next prompt after you switch branches. A title you set yourself with `/rename` or `--name` is left alone. Detached HEADs and folders outside a repo keep whatever title they have. The plugin's hooks load when a session starts, so turn it on, then start a new session.
 
 ### Your own segments
 

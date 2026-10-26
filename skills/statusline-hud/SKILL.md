@@ -111,6 +111,7 @@ Append the assignment to the conf file with its new value. Common requests:
 | bare MR/PR numbers | `MR_PREFIX_GITLAB="!"` `MR_PREFIX_GITHUB="#"` |
 | underline MR links | `MR_LINK_STYLE=4` |
 | bar colour tiers | `BAR_CTX=(30 50 60)` `BAR_LINEAR=(60 80 95)` `TIER_COLOR=(46 226 214 196)` |
+| name the session after the git branch | `SESSION_TITLE=branch` (off by default); renames on the next prompt after a branch switch, never over a `/rename`; takes effect in the next session |
 | a custom segment | define `seg_<name>() { printf "..."; }` in the conf and add `<name>` to `SEGMENTS` |
 
 Custom segments are plain bash functions; the conf is sourced, so anything goes:
