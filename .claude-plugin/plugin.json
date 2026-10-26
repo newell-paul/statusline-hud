@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "statusline-hud",
   "displayName": "Statusline HUD",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A power meter for Claude Code: context, 5h/7d rate-limit bars, model + effort, git, MR/PR badge and pipeline dot in one status line.",
   "author": {
     "name": "Paul Newell",

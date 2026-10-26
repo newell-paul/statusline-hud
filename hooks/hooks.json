@@ -1,5 +1,5 @@
 {
-  "description": "Re-point ~/.claude/statusline-hud.sh at the plugin after updates; nudge once if not yet set up",
+  "description": "Re-point ~/.claude/statusline-hud.sh at the plugin after updates; nudge once if not yet set up; with SESSION_TITLE=branch, name the session after the git branch",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,27 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-title.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-title.sh\"",
             "timeout": 5
           }
         ]
